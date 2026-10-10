@@ -1,0 +1,105 @@
+{
+  "format": "mtd_similarity_bayesian_prior_catalog_v1",
+  "model": "monotone_bayesian_binomial_logistic_log_dose_laplace_v2",
+  "description": "Broad weakly informative candidate priors for per-arm monotone Bayesian Binomial-logistic dose-DLT curves. alpha is the log-odds at the geometric mean observed dose; eta is transformed by softplus to obtain a non-negative slope per natural-log dose ratio. The candidates retain different sensitivity-analysis centers, but all use broad standard deviations so sparse historical cohorts are less strongly pulled toward a preselected toxicity level or slope. Compare candidates on frozen validation data before choosing one for a target curve.",
+  "default_prior": "weakly_informative",
+  "prior_policy": {
+    "name": "broad_weakly_informative_normals_v2",
+    "minimum_alpha_sd": 2.5,
+    "minimum_eta_sd": 1.5,
+    "interpretation": "Proper regularizing priors are retained for stable Laplace fitting; they are deliberately broad rather than flat or improper."
+  },
+  "priors": {
+    "very_low_toxicity": {
+      "description": "Broad weakly informative sensitivity prior centered on unusually low reference-dose DLT risk and a shallow positive dose increase.",
+      "alpha": {
+        "distribution": "normal",
+        "mean": -4.0,
+        "sd": 2.5
+      },
+      "eta": {
+        "distribution": "normal",
+        "mean": -0.8,
+        "sd": 1.5
+      }
+    },
+    "low_toxicity": {
+      "description": "Broad weakly informative sensitivity prior centered on low reference-dose DLT risk and a modest positive dose increase.",
+      "alpha": {
+        "distribution": "normal",
+        "mean": -3.0,
+        "sd": 2.5
+      },
+      "eta": {
+        "distribution": "normal",
+        "mean": -0.4,
+        "sd": 1.5
+      }
+    },
+    "phase1_moderate": {
+      "description": "Broad weakly informative Phase-I sensitivity prior centered on low reference-dose DLT risk and a moderate positive dose increase.",
+      "alpha": {
+        "distribution": "normal",
+        "mean": -2.2,
+        "sd": 2.5
+      },
+      "eta": {
+        "distribution": "normal",
+        "mean": 0.55,
+        "sd": 1.5
+      }
+    },
+    "target_dlt_25": {
+      "description": "Broad weakly informative sensitivity prior centered on 25% DLT probability at the geometric-mean observed dose, with a moderate positive dose increase.",
+      "alpha": {
+        "distribution": "normal",
+        "mean": -1.1,
+        "sd": 2.5
+      },
+      "eta": {
+        "distribution": "normal",
+        "mean": 0.55,
+        "sd": 1.5
+      }
+    },
+    "flat_dose_response": {
+      "description": "Broad weakly informative sensitivity prior centered on a near-flat positive dose response.",
+      "alpha": {
+        "distribution": "normal",
+        "mean": -2.2,
+        "sd": 2.5
+      },
+      "eta": {
+        "distribution": "normal",
+        "mean": -1.5,
+        "sd": 1.5
+      }
+    },
+    "steep_dose_response": {
+      "description": "Broad weakly informative sensitivity prior centered on a steeper positive dose response.",
+      "alpha": {
+        "distribution": "normal",
+        "mean": -2.2,
+        "sd": 2.5
+      },
+      "eta": {
+        "distribution": "normal",
+        "mean": 1.4,
+        "sd": 1.5
+      }
+    },
+    "weakly_informative": {
+      "description": "Default broad weakly informative prior centered on 25% reference-dose DLT risk with a neutral latent slope; intended to let observed cohort data dominate whenever they are adequate.",
+      "alpha": {
+        "distribution": "normal",
+        "mean": -1.1,
+        "sd": 2.5
+      },
+      "eta": {
+        "distribution": "normal",
+        "mean": 0.0,
+        "sd": 1.5
+      }
+    }
+  }
+}

@@ -1,0 +1,110 @@
+{
+  "phase1_prediction/reference/oc_service.py": {
+    "source": "v1/mtd_similarity/oc_service.py",
+    "source_sha256": "2b4d86bbf668060c0757280f370c416d8de4f18eb5c7623cb743bb1e6db01f41"
+  },
+  "phase1_prediction/reference/similarity_weighted_curve.py": {
+    "source": "v1/mtd_similarity/similarity_weighted_curve.py",
+    "source_sha256": "b451a356b52f8b334fa2efbcf62c3a5131e0ae6c3392091cd519a6924d2fd613"
+  },
+  "phase1_prediction/reference/toxicity_similarity.py": {
+    "source": "v1/mtd_similarity/toxicity_similarity.py",
+    "source_sha256": "4c355a9ba9be6d22e795e0a2eedf72fbe802454a2c245850c22e34702ea147e2"
+  },
+  "phase1_prediction/reference/dose_unit_conversion.py": {
+    "source": "v1/mtd_similarity/dose_unit_conversion.py",
+    "source_sha256": "dc7be42144894cbbdda8e5a9b0dd8e14e614981a60b6596a324653a3a89047d8"
+  },
+  "phase1_prediction/reference/dlt_evidence.py": {
+    "source": "v1/mtd_similarity/dlt_evidence.py",
+    "source_sha256": "c9b782602f8cd2bb061247610aa28b557e491edf40de13ef933ec065b8174ccd"
+  },
+  "phase1_prediction/reference/toxicity_curve_common.py": {
+    "source": "v1/mtd_similarity/toxicity_curve_common.py",
+    "source_sha256": "291fc9180d11d34064cb3fa01d5c6e154423e47898c5507af7c219d8aeea3020"
+  },
+  "phase1_prediction/reference/dlt_toxicity_regression.py": {
+    "source": "v1/mtd_similarity/dlt_toxicity_regression.py",
+    "source_sha256": "20c558dcbd41096c7316c6275d5e41a2a2a84b05b6bb882064f9e6b44af712f0"
+  },
+  "phase1_prediction/reference/bayesian_toxicity.py": {
+    "source": "v1/mtd_similarity/bayesian_toxicity.py",
+    "source_sha256": "972c70fc19293a8f15e0308b454a586b53d5e650545ef37b5b6596e3fe5b184d"
+  },
+  "phase1_prediction/reference/bayesian_curve_cache.py": {
+    "source": "v1/mtd_similarity/bayesian_curve_cache.py",
+    "source_sha256": "6e2b89066de1a6a3b66a171c0e7d96cbc72dea0779ec6b89d55563810fb7c859"
+  },
+  "phase1_prediction/reference/posterior_curve_source_mixture.py": {
+    "source": "v1/mtd_similarity/posterior_curve_source_mixture.py",
+    "source_sha256": "9bbb8e0eca1cf4e35d295f1ceafea1ef175eee789db48e5271557325a567764c"
+  },
+  "phase1_prediction/reference/power_likelihood_random_intercept_slope.py": {
+    "source": "v1/mtd_similarity/power_likelihood_random_intercept_slope.py",
+    "source_sha256": "4c23f657e7ddaa80ac0dd5c34ed87bdf5c583a623b044709cc714df4e8e6962c"
+  },
+  "phase1_prediction/reference/power_likelihood_random_effects.py": {
+    "source": "v1/mtd_similarity/power_likelihood_random_effects.py",
+    "source_sha256": "0227e7258d67881bcf5d32667363d853bbb7bc33b286ecbac34bc8127ea21904"
+  },
+  "phase1_prediction/reference/power_likelihood_curve.py": {
+    "source": "v1/mtd_similarity/power_likelihood_curve.py",
+    "source_sha256": "d8e1c104373767ea4f6f7a0f6a53fd68a32ae6200f4a2b1a01e79febc7575448"
+  },
+  "phase1_prediction/reference/oc_simulation.py": {
+    "source": "v1/mtd_similarity/oc_simulation.py",
+    "source_sha256": "16b48c30064e55a80bbf07080cb601602c49abf8f2eedafc96c7c55c072baf80"
+  },
+  "phase1_prediction/reference/design_engines/three_plus_three.py": {
+    "source": "v1/mtd_similarity/design_engines/three_plus_three.py",
+    "source_sha256": "3b16f67a8b2344e461f4c23e4116ca92c9e8ed3913581c130d6866e88c001582"
+  },
+  "phase1_prediction/reference/design_engines/boin.py": {
+    "source": "v1/mtd_similarity/design_engines/boin.py",
+    "source_sha256": "73ce25eb1053d02776c740e703dc4f43cd11ccc6dc50daa6ed542889628c8bb3"
+  },
+  "phase1_prediction/reference/design_engines/crm.py": {
+    "source": "v1/mtd_similarity/design_engines/crm.py",
+    "source_sha256": "de41588fd779fe2b3ece7b2d7c2f5cb196be1ba733200293f4877ca1b910b054"
+  },
+  "phase1_prediction/reference/boin_parameter_search.py": {
+    "source": "v1/mtd_similarity/boin_parameter_search.py",
+    "source_sha256": "6a3f8d8f48a71fd6de3c6524e0c1732365accd641023195b963070ce81bf76db"
+  },
+  "phase1_prediction/reference/prediction_service.py": {
+    "source": "v1/mtd_similarity/prediction_service.py",
+    "source_sha256": "cf86833fa9c7e59612856d2936b24a2dd9c6dcf8ca3438dd7a6cef0130998ce0"
+  },
+  "phase1_prediction/reference/historical_article_selection.py": {
+    "source": "v1/mtd_similarity/historical_article_selection.py",
+    "source_sha256": "5b4cc1fa0c0da4ef62fc1481635658cbc38273d687265af20ea511a124ea9b2e"
+  },
+  "phase1_prediction/reference/estimate_toxicity_curve.py": {
+    "source": "v1/mtd_similarity/estimate_toxicity_curve.py",
+    "source_sha256": "1ad21bd35a7adf6feb46854d10adc06b4be6c92ec90be38c6e782ce46b7e8f92"
+  },
+  "phase1_prediction/reference/bayesian_prior_candidates.json": {
+    "source": "v1/mtd_similarity/bayesian_prior_candidates.json",
+    "source_sha256": "b7727fcf9c8a753ad2421e88b191e6c326a89a2269f7a6330c875811081d9e44"
+  },
+  "phase1_prediction/reference/manual_similarity_parameters.json": {
+    "source": "v1/mtd_similarity/manual_similarity_parameters.json",
+    "source_sha256": "8942e1facd37bb9b12f5e0a1559e6b721ebf606d077d07631f3b9f5b4345c579"
+  },
+  "phase1_web/reference/components.py": {
+    "source": "v1/toxicity_ui/components.py",
+    "source_sha256": "5e5b7ce155feb7f445df1ed8b458973fad7c7013796b6dc988cbea091407ae73"
+  },
+  "phase1_web/reference/helpers.py": {
+    "source": "v1/toxicity_ui/helpers.py",
+    "source_sha256": "bfcfbd96a52afd5bc7ad74e4c08f6de5fb69ad0044385643cfc7b8e7cc6b8e6d"
+  },
+  "phase1_web/reference/target_trial_draft.py": {
+    "source": "v1/toxicity_ui/target_trial_draft.py",
+    "source_sha256": "0dff1c187b246f46e734d4ed04f79cb82e824e035cf390424f4c80089bdbce40"
+  },
+  "phase1_web/reference/article_review.py": {
+    "source": "v1/toxicity_ui/article_review.py",
+    "source_sha256": "fd4f673b319c38f7b3d2ee8c9f46a93c757e78ab7be48ce13d49d583b399765f"
+  }
+}

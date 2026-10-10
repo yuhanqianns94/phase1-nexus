@@ -1,0 +1,573 @@
+{
+  "version": "target_regimen_v1",
+  "name": "PMC3309850 · Terameprocol CPE (+PEG) intravenous regimen · 填写示例",
+  "drugs": [
+    {
+      "drug_id": "cmp_cpe",
+      "name": "terameprocol",
+      "research_priority": 1,
+      "research_role": "primary",
+      "mode": "numeric",
+      "reference_dose": 1325.3524574594649,
+      "unit": "mg/day",
+      "profile": {
+        "adjustments": [
+          {
+            "logic": null,
+            "logic_tokens": [
+              "and"
+            ],
+            "negated": null,
+            "operator": null,
+            "raw": "If a patient developed a DLT and the toxicity resolved; A subsequent dose could be administered at the previous dose level",
+            "threshold": null,
+            "timing": null,
+            "topic": "if a patient developed a dlt and the toxicity resolved; a subsequent dose could be administered at the previous dose level",
+            "unit": null,
+            "upper": null
+          },
+          {
+            "logic": null,
+            "logic_tokens": [],
+            "negated": null,
+            "operator": null,
+            "raw": "Failure to tolerate the lowest dose (750 mg/day); Patient withdrawn from the study",
+            "threshold": null,
+            "timing": null,
+            "topic": "failure to tolerate the lowest dose (750 mg/day); patient withdrawn from the study",
+            "unit": null,
+            "upper": null
+          }
+        ],
+        "aliases": [
+          "EM-1421",
+          "EM1421",
+          "M4N",
+          "tetra-O-methyl nordihydroguaiaretic acid",
+          "meso-tetra-O-methyl nordihydroguaiaretic acid"
+        ],
+        "classes": [
+          "global transcription inhibitor"
+        ],
+        "formulation": "CPE (+PEG), 10 mg/mL",
+        "kind": "drug",
+        "mechanisms": [
+          "Global transcription inhibitor",
+          "Disruption/inhibition of Sp1-regulated transcription",
+          "Inhibits production of Cdc2/CDK1 and survivin"
+        ],
+        "name": "terameprocol",
+        "pathways": [
+          "G2/M cell-cycle transition",
+          "apoptosis",
+          "hypoxia-responsive genes",
+          "drug resistance",
+          "radiation resistance in hypoxia"
+        ],
+        "phases": [
+          {
+            "administration_days": "5 consecutive days each month",
+            "cycle": "28 days",
+            "duration": "continued until disease progression, unacceptable toxicity, or patient discontinuation",
+            "end": "disease progression, unacceptable toxicity, or patient decision to discontinue",
+            "form": "CPE: 10 mg/mL terameprocol in PEG 300, hydroxypropyl-β-cyclodextrin, and water",
+            "frequency": "daily for 5 consecutive days every 28 days",
+            "infusion_duration": null,
+            "infusion_rate": "150 mL/hour",
+            "phase": "Starting regimen and repeated 28-day cycles",
+            "route": "intravenous infusion through a central or peripheral line",
+            "start": null
+          }
+        ],
+        "presence": "present",
+        "reporting_scope": "cohort",
+        "role": "escalated",
+        "schedule": "IV infusion for 5 consecutive days every 28 days",
+        "targets": [
+          "Sp1",
+          "Cdc2/CDK1",
+          "survivin"
+        ],
+        "model_drug_id": "cmp_cpe",
+        "research_priority": 1,
+        "research_role": "primary"
+      },
+      "transport_mode": "relative_dose_analogy",
+      "allow_background_anchor": false
+    },
+    {
+      "drug_id": "entity_5ebdd1c729616b6c",
+      "name": "enzyme-inducing antiseizure drug (EIASD)",
+      "research_priority": 2,
+      "research_role": "background",
+      "mode": "background",
+      "reference_dose": null,
+      "unit": null,
+      "profile": {
+        "adjustments": [],
+        "aliases": [],
+        "classes": [],
+        "formulation": null,
+        "kind": "drug_class",
+        "mechanisms": [],
+        "name": "enzyme-inducing antiseizure drug (EIASD)",
+        "pathways": [],
+        "phases": [],
+        "presence": "present",
+        "reporting_scope": "cohort",
+        "role": "concomitant",
+        "schedule": "concurrent use",
+        "targets": [],
+        "model_drug_id": "entity_5ebdd1c729616b6c",
+        "research_priority": 2,
+        "research_role": "background"
+      },
+      "transport_mode": "relative_dose_analogy",
+      "allow_background_anchor": false
+    }
+  ],
+  "points": [
+    {
+      "level_id": "L1",
+      "doses": {
+        "cmp_cpe": 750.0,
+        "entity_5ebdd1c729616b6c": null
+      }
+    },
+    {
+      "level_id": "L2",
+      "doses": {
+        "cmp_cpe": 1100.0,
+        "entity_5ebdd1c729616b6c": null
+      }
+    },
+    {
+      "level_id": "L3",
+      "doses": {
+        "cmp_cpe": 1700.0,
+        "entity_5ebdd1c729616b6c": null
+      }
+    },
+    {
+      "level_id": "L4",
+      "doses": {
+        "cmp_cpe": 2200.0,
+        "entity_5ebdd1c729616b6c": null
+      }
+    }
+  ],
+  "path_level_ids": [],
+  "profile": {
+    "population": {
+      "disease": [
+        "Recurrent or progressive high-grade malignant glioma"
+      ],
+      "modifiers": [
+        "Contrast-enhancing measurable disease by MRI or CT",
+        "Heavily pretreated",
+        "Histologically proven",
+        "Progressive or recurrent after radiation with or without chemotherapy"
+      ],
+      "sex": [
+        "Adults of any sex; reproductive precautions applied to patients with potential for pregnancy or impregnating a partner."
+      ],
+      "purpose": "Multicenter dose-escalation study of intravenous terameprocol in adults with recurrent high-grade glioma, including initially independent escalation according to EIASD use and a later combined EIASD cohort.",
+      "baseline": [
+        "35 patients participated during 2007-2008",
+        "Histology: glioblastoma 15 (43%), anaplastic oligodendroglioma 11 (31%), anaplastic astrocytoma 9 (26%)",
+        "Median 2 prior chemotherapy regimens (range 1-6)",
+        "Median Karnofsky performance status 80 (range 60-100)",
+        "Median age 46 years (range 29-71)"
+      ],
+      "age_min": 18.0,
+      "age_max": null
+    },
+    "eligibility": {
+      "inclusion": [
+        {
+          "raw": "At least 18 years of age",
+          "topic": "at least 18 years of age",
+          "operator": null,
+          "threshold": null,
+          "upper": null,
+          "unit": null,
+          "timing": null,
+          "negated": null,
+          "logic": null,
+          "logic_tokens": []
+        },
+        {
+          "raw": "Histologically proven malignant glioma: anaplastic astrocytoma, anaplastic oligodendroglioma, or glioblastoma multiforme",
+          "topic": "histologically proven malignant glioma: anaplastic astrocytoma, anaplastic oligodendroglioma, or glioblastoma multiforme",
+          "operator": null,
+          "threshold": null,
+          "upper": null,
+          "unit": null,
+          "timing": null,
+          "negated": null,
+          "logic": null,
+          "logic_tokens": [
+            "or"
+          ]
+        },
+        {
+          "raw": "Progressive or recurrent after radiation with or without chemotherapy",
+          "topic": "progressive or recurrent after radiation with or without chemotherapy",
+          "operator": null,
+          "threshold": null,
+          "upper": null,
+          "unit": null,
+          "timing": null,
+          "negated": null,
+          "logic": null,
+          "logic_tokens": [
+            "or",
+            "without"
+          ]
+        },
+        {
+          "raw": "Contrast-enhancing measurable disease by MRI or CT",
+          "topic": "contrast-enhancing measurable disease by mri or ct",
+          "operator": null,
+          "threshold": null,
+          "upper": null,
+          "unit": null,
+          "timing": null,
+          "negated": null,
+          "logic": null,
+          "logic_tokens": [
+            "or"
+          ]
+        },
+        {
+          "raw": "Recovered from toxicities of prior therapy",
+          "topic": "recovered from toxicities of prior therapy",
+          "operator": null,
+          "threshold": null,
+          "upper": null,
+          "unit": null,
+          "timing": null,
+          "negated": null,
+          "logic": null,
+          "logic_tokens": []
+        },
+        {
+          "raw": "Normal hematologic, renal, and liver function",
+          "topic": "normal hematologic, renal, and liver function",
+          "operator": null,
+          "threshold": null,
+          "upper": null,
+          "unit": null,
+          "timing": null,
+          "negated": null,
+          "logic": null,
+          "logic_tokens": [
+            "and"
+          ]
+        },
+        {
+          "raw": "Karnofsky performance status ≥60%",
+          "topic": "karnofsky performance status %",
+          "operator": ">=",
+          "threshold": 60.0,
+          "upper": null,
+          "unit": "%",
+          "timing": null,
+          "negated": null,
+          "logic": null,
+          "logic_tokens": []
+        },
+        {
+          "raw": "Mini Mental State Exam score ≥15",
+          "topic": "mini mental state exam score",
+          "operator": ">=",
+          "threshold": 15.0,
+          "upper": null,
+          "unit": null,
+          "timing": null,
+          "negated": null,
+          "logic": null,
+          "logic_tokens": []
+        },
+        {
+          "raw": "Ability to provide written informed consent",
+          "topic": "ability to provide written informed consent",
+          "operator": null,
+          "threshold": null,
+          "upper": null,
+          "unit": null,
+          "timing": null,
+          "negated": null,
+          "logic": null,
+          "logic_tokens": []
+        },
+        {
+          "raw": "Patients with potential for pregnancy or impregnating a partner agreed to acceptable birth control; women of childbearing potential required a negative pregnancy test",
+          "topic": "patients with potential for pregnancy or impregnating a partner agreed to acceptable birth control; women of childbearing potential required a negative pregnancy test",
+          "operator": null,
+          "threshold": null,
+          "upper": null,
+          "unit": null,
+          "timing": null,
+          "negated": null,
+          "logic": null,
+          "logic_tokens": [
+            "or"
+          ]
+        },
+        {
+          "raw": "At least 3 months since completion of radiation therapy",
+          "topic": "at least 3 months since completion of radiation therapy",
+          "operator": null,
+          "threshold": null,
+          "upper": null,
+          "unit": null,
+          "timing": null,
+          "negated": null,
+          "logic": null,
+          "logic_tokens": []
+        },
+        {
+          "raw": "At least 3 weeks since nonnitrosourea chemotherapy",
+          "topic": "at least 3 weeks since nonnitrosourea chemotherapy",
+          "operator": null,
+          "threshold": null,
+          "upper": null,
+          "unit": null,
+          "timing": null,
+          "negated": null,
+          "logic": null,
+          "logic_tokens": []
+        },
+        {
+          "raw": "At least 6 weeks since nitrosourea chemotherapy",
+          "topic": "at least 6 weeks since nitrosourea chemotherapy",
+          "operator": null,
+          "threshold": null,
+          "upper": null,
+          "unit": null,
+          "timing": null,
+          "negated": null,
+          "logic": null,
+          "logic_tokens": []
+        },
+        {
+          "raw": "Recovered from toxicities of prior therapy",
+          "topic": "recovered from toxicities of prior therapy",
+          "operator": null,
+          "threshold": null,
+          "upper": null,
+          "unit": null,
+          "timing": null,
+          "negated": null,
+          "logic": null,
+          "logic_tokens": []
+        },
+        {
+          "raw": "Contrast-enhancing measurable disease by MRI or CT",
+          "topic": "contrast-enhancing measurable disease by mri or ct",
+          "operator": null,
+          "threshold": null,
+          "upper": null,
+          "unit": null,
+          "timing": null,
+          "negated": null,
+          "logic": null,
+          "logic_tokens": [
+            "or"
+          ]
+        },
+        {
+          "raw": "Normal hematologic, renal, and liver function",
+          "topic": "normal hematologic, renal, and liver function",
+          "operator": null,
+          "threshold": null,
+          "upper": null,
+          "unit": null,
+          "timing": null,
+          "negated": null,
+          "logic": null,
+          "logic_tokens": [
+            "and"
+          ]
+        },
+        {
+          "raw": "Karnofsky performance status ≥60%",
+          "topic": "karnofsky performance status %",
+          "operator": ">=",
+          "threshold": 60.0,
+          "upper": null,
+          "unit": "%",
+          "timing": null,
+          "negated": null,
+          "logic": null,
+          "logic_tokens": []
+        },
+        {
+          "raw": "Mini Mental State Exam score ≥15",
+          "topic": "mini mental state exam score",
+          "operator": ">=",
+          "threshold": 15.0,
+          "upper": null,
+          "unit": null,
+          "timing": null,
+          "negated": null,
+          "logic": null,
+          "logic_tokens": []
+        }
+      ],
+      "exclusion": [
+        {
+          "raw": "Serious concurrent medical illness, infection, or malignancy",
+          "topic": "serious concurrent medical illness, infection, or malignancy",
+          "operator": null,
+          "threshold": null,
+          "upper": null,
+          "unit": null,
+          "timing": null,
+          "negated": null,
+          "logic": null,
+          "logic_tokens": [
+            "or"
+          ]
+        },
+        {
+          "raw": "Known sensitivity to terameprocol, PEG 300, or hydroxypropyl-β-cyclodextrin",
+          "topic": "known sensitivity to terameprocol, peg 300, or hydroxypropyl-β-cyclodextrin",
+          "operator": null,
+          "threshold": null,
+          "upper": null,
+          "unit": null,
+          "timing": null,
+          "negated": null,
+          "logic": null,
+          "logic_tokens": [
+            "or"
+          ]
+        },
+        {
+          "raw": "Pregnant or breast-feeding",
+          "topic": "pregnant or breast-feeding",
+          "operator": null,
+          "threshold": null,
+          "upper": null,
+          "unit": null,
+          "timing": null,
+          "negated": null,
+          "logic": null,
+          "logic_tokens": [
+            "or"
+          ]
+        },
+        {
+          "raw": "Receiving other anticancer therapy for the brain tumor",
+          "topic": "receiving other anticancer therapy for the brain tumor",
+          "operator": null,
+          "threshold": null,
+          "upper": null,
+          "unit": null,
+          "timing": null,
+          "negated": null,
+          "logic": null,
+          "logic_tokens": []
+        }
+      ]
+    },
+    "configurations": [
+      {
+        "adjustments": [],
+        "phase": "Phase I",
+        "role": "escalation",
+        "status": "planned"
+      }
+    ],
+    "dlt": {
+      "criteria": [
+        {
+          "logic": "OR",
+          "logic_tokens": [
+            "or"
+          ],
+          "negated": false,
+          "operator": "=",
+          "raw": "any grade 3 or 4 nonhematologic toxicity",
+          "threshold": 3.0,
+          "timing": "first cycle of therapy",
+          "topic": "nonhematologic toxicity",
+          "unit": "grade",
+          "upper": 4.0
+        },
+        {
+          "logic": "OR",
+          "logic_tokens": [],
+          "negated": false,
+          "operator": "<=",
+          "raw": "platelet count ≤25,000 platelets/mm3",
+          "threshold": 25000.0,
+          "timing": "first cycle of therapy",
+          "topic": "thrombocytopenia",
+          "unit": "platelets/mm3",
+          "upper": null
+        },
+        {
+          "logic": "OR",
+          "logic_tokens": [],
+          "negated": false,
+          "operator": ">",
+          "raw": "a delay in starting a subsequent course of treatment for >14 days because of incomplete recovery from toxicity",
+          "threshold": 14.0,
+          "timing": "start of subsequent course",
+          "topic": "treatment delay",
+          "unit": "days",
+          "upper": null
+        },
+        {
+          "logic": "OR",
+          "logic_tokens": [],
+          "negated": false,
+          "operator": null,
+          "raw": "febrile neutropenia",
+          "threshold": null,
+          "timing": "first cycle of therapy",
+          "topic": "febrile neutropenia",
+          "unit": null,
+          "upper": null
+        },
+        {
+          "logic": null,
+          "logic_tokens": [],
+          "negated": false,
+          "operator": "<=",
+          "raw": "absolute neutrophil count ≤500 neutrophils/mm3",
+          "threshold": 500.0,
+          "timing": "first cycle of therapy",
+          "topic": "neutropenia",
+          "unit": "neutrophils/mm3",
+          "upper": null
+        }
+      ],
+      "exceptions": [],
+      "grading": "National Cancer Institute Common Toxicity Criteria, version 3.0 (reported for observed toxicities)",
+      "version": "Protocol definition",
+      "grading_version": "3.0"
+    },
+    "windows": [
+      {
+        "basis": "derived",
+        "cycles": "first cycle",
+        "days": 28.0,
+        "end": "end of first cycle / first month",
+        "kind": "unclear",
+        "raw": "Treatment-related adverse events occurring in the first cycle of therapy; toxicity evaluability required receipt of 100% of the prescribed dose during the first month.",
+        "start": "start of therapy"
+      }
+    ],
+    "example_source": {
+      "document_id": "PMC3309850",
+      "scope_id": "scope_206f87d922452c0a6e74",
+      "note": "使用新合并的 CPE 来源范围；此目标示例固定伴随药已使用，剂量未知。"
+    }
+  },
+  "target_dlt": 0.25,
+  "mapping_overrides": {}
+}

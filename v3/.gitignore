@@ -1,0 +1,44 @@
+# Local credentials and secrets
+.env
+.env.*
+!.env.example
+.streamlit/secrets.toml
+**/.streamlit/secrets.toml
+secrets.json
+secrets.yaml
+secrets.yml
+credentials.json
+*.pem
+*.key
+*.p12
+*.pfx
+.aws/
+.ssh/
+
+# Python environments, build artifacts, and caches
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.matplotlib/
+.coverage
+htmlcov/
+
+# Local data, results, logs, and temporary files
+output/
+outputs/
+.cache/
+*.log
+*.sqlite3
+*.tmp
+*.swp
+.DS_Store
+
+# Publication build artifacts
+docs/publication/.build*/

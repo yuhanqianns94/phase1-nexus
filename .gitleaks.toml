@@ -1,0 +1,24 @@
+# Keep all default secret-detection rules enabled.
+[extend]
+useDefault = true
+
+# These exact public Streamlit widget IDs are not authentication credentials.
+[allowlist]
+description = "Reviewed UI widget identifiers"
+regexTarget = "secret"
+regexes = [
+    '''^plan_A_duplicate_phase_0$''',
+    '''^plan_A_phase_0_freq$''',
+    '''^plan_A_phase_0_infusion_duration$''',
+    '''^plan_A_phase_0_interval$''',
+    '''^plan_A_phase_0_route$''',
+    '''^plan_D_remove_phase_0$''',
+    '''^plan_dlt_criteria_0_negated$''',
+    '''^plan_dlt_criteria_0_raw$''',
+    '''^plan_dlt_criteria_0_threshold$''',
+    '''^plan_elig_inclusion_0_raw$''',
+    '''^plan_elig_inclusion_0_threshold$''',
+    '''^plan_elig_inclusion_0_topic$''',
+    '''^plan_elig_inclusion_1_raw$''',
+    '''^plan_elig_inclusion_1_threshold$''',
+]

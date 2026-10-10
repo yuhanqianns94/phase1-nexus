@@ -1,0 +1,19 @@
+{
+  "version": "scope_compatibility_v1",
+  "groups": [
+    {
+      "group_id": "same_eligibility_exposure_strata",
+      "document_id": "PMC3309850",
+      "source_sha256": "89b8c986c951617a94bce81afe0b2f117833c95f176b7a63dc7b6c2169a61899",
+      "arm_ids": [
+        "arm_neg",
+        "arm_pos"
+      ],
+      "reason": "Both arms share the reported population and eligibility. Treatment Plan defines these arms by concomitant exposure use, including washout. Formulation, dosing schedule and DLT-window boundaries must still match. The later combined-enrolment arm is not included.",
+      "evidence_ids": [
+        "pdf_4de3fb570d20afd5"
+      ],
+      "locator": "Treatment Plan, page 513"
+    }
+  ]
+}

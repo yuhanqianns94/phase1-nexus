@@ -1,0 +1,20 @@
+{
+  "format": "mtd_similarity_manual_parameters_v1",
+  "description": "Authoritative default similarity configuration for prediction, LOO validation, prior comparison, and the UI. Explicit CLI/UI overrides remain possible; --no-manual-similarity-params is the only built-in-default opt-out. Weights may be any non-negative numbers and are normalized to sum to 1.",
+  "field_weights": {
+    "drug": 1.66667,
+    "cancer_type": 1.66667,
+    "route": 1.66667,
+    "schedule": 0.0,
+    "schema_embedding": 0.0,
+    "dlt_definition": 1.66667,
+    "dlt_eva": 1.66667,
+    "target_moa": 0.0,
+    "age": 0.0,
+    "trial_type": 0.0,
+    "eligibility_embedding": 1.66667,
+    "gender": 0.0,
+    "dose_form": 0.0
+  },
+  "similarity_threshold": 0.3
+}

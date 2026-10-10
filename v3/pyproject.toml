@@ -1,0 +1,50 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "phase1-extraction-v3"
+version = "3.3.0"
+description = "Complete Phase I literature, v3 extraction, toxicity prediction, and BOIN workflow"
+requires-python = ">=3.11,<3.14"
+dependencies = [
+  "altair>=5,<7",
+  "jax>=0.7,<0.8",
+  "numpyro>=0.19,<0.20",
+  "arviz>=0.22,<0.23",
+  "numpy>=2.1,<3",
+  "matplotlib>=3.9,<4",
+  "openai>=2.41,<3",
+  "pydantic>=2.12,<3",
+  "PyMuPDF>=1.28,<2",
+  "Pillow>=11,<12",
+  "requests>=2.32,<3",
+  "scipy>=1.15,<2",
+  "streamlit>=1.63,<2",
+]
+
+[project.optional-dependencies]
+test = ["pytest>=8,<9"]
+
+[project.scripts]
+phase1-extract-v3 = "phase1_extraction.cli:main"
+phase1-review-v3 = "phase1_extraction.review_launcher:main"
+phase1-project-v3 = "phase1_project.cli:main"
+phase1-web-v3 = "phase1_web.launcher:main"
+phase1-acquire-v3 = "phase1_acquisition.launcher:acquire"
+phase1-clean-xml-v3 = "phase1_acquisition.launcher:clean_xml"
+phase1-download-pdfs-v3 = "phase1_acquisition.launcher:download_pdfs"
+phase1-download-visuals-v3 = "phase1_acquisition.launcher:download_visuals"
+
+[tool.setuptools.packages.find]
+include = ["phase1_acquisition*", "phase1_extraction*", "phase1_prediction*", "phase1_project*", "phase1_simulation*", "phase1_web*"]
+
+[tool.setuptools.package-data]
+phase1_extraction = ["*.txt"]
+phase1_prediction = ["*.json"]
+"phase1_prediction.reference" = ["*.json"]
+"phase1_prediction.multidrug" = ["*.json"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"

@@ -1,0 +1,676 @@
+{
+  "version": "target_regimen_v1",
+  "name": "Computational demonstration only: pembrolizumab + IPH2101; no observed combination data",
+  "drugs": [
+    {
+      "drug_id": "A",
+      "name": "pembrolizumab",
+      "research_priority": 1,
+      "research_role": "primary",
+      "mode": "numeric",
+      "reference_dose": 2.0,
+      "unit": "mg/kg",
+      "profile": {
+        "adjustments": [],
+        "aliases": [
+          "MK-3475",
+          "pembrolizumab"
+        ],
+        "classes": [
+          "anti-PD-1 monoclonal antibody"
+        ],
+        "formulation": null,
+        "kind": "drug",
+        "mechanisms": [
+          "Prevents PD-1 from binding PD-L1 and PD-L2",
+          "IgG4-κ humanized monoclonal antibody",
+          "pembrolizumab (MK-3475), IgG4-κ humanized monoclonal antibody"
+        ],
+        "name": "pembrolizumab",
+        "pathways": [
+          "PD-1/PD-L1/PD-L2 immune checkpoint pathway"
+        ],
+        "phases": [
+          {
+            "administration_days": "days 1 and 28",
+            "cycle": "cycle 1: initial 28 days",
+            "duration": null,
+            "end": "day 28",
+            "form": null,
+            "frequency": "initial dose, then day 28",
+            "infusion_duration": "30 min",
+            "infusion_rate": null,
+            "phase": "Cycle 1 first dose and rest",
+            "route": "Intravenous",
+            "start": "day 1"
+          },
+          {
+            "administration_days": "Q2W after day 28",
+            "cycle": null,
+            "duration": "until disease progression or intolerable toxicity",
+            "end": "disease progression or intolerable toxicity",
+            "form": null,
+            "frequency": "every 14 days",
+            "infusion_duration": "30 min",
+            "infusion_rate": null,
+            "phase": "Subsequent treatment",
+            "route": "Intravenous",
+            "start": "after day 28"
+          }
+        ],
+        "presence": "present",
+        "reporting_scope": "cohort",
+        "role": "escalated",
+        "schedule": "30-min intravenous infusion on days 1 and 28, Q2W thereafter until disease progression or intolerable toxicity",
+        "targets": [
+          "PD-1"
+        ],
+        "model_drug_id": "cmp1",
+        "research_priority": 1,
+        "research_role": "primary"
+      },
+      "transport_mode": "relative_dose_analogy",
+      "allow_background_anchor": false
+    },
+    {
+      "drug_id": "B",
+      "name": "IPH2101",
+      "research_priority": 2,
+      "research_role": "partner",
+      "mode": "numeric",
+      "reference_dose": 0.1,
+      "unit": "mg/kg",
+      "profile": {
+        "adjustments": [],
+        "aliases": [
+          "1-7F9",
+          "IPH2101"
+        ],
+        "classes": [
+          "anti-KIR monoclonal antibody"
+        ],
+        "formulation": null,
+        "kind": "drug",
+        "mechanisms": [
+          "Blocks KIR-ligand interaction",
+          "Nondepleting antibody",
+          "human IgG4 monoclonal antibody"
+        ],
+        "name": "IPH2101",
+        "pathways": [
+          "inhibitory KIR signaling"
+        ],
+        "phases": [
+          {
+            "administration_days": "Day 1 of each 28-day cycle",
+            "cycle": "28 days",
+            "duration": "up to 4 cycles",
+            "end": "up to 4 planned doses/cycles",
+            "form": null,
+            "frequency": "once every 28 days",
+            "infusion_duration": null,
+            "infusion_rate": null,
+            "phase": "Planned treatment",
+            "route": "Intravenous",
+            "start": null
+          }
+        ],
+        "presence": "present",
+        "reporting_scope": "cohort",
+        "role": "escalated",
+        "schedule": "intravenously once every 28 days for up to 4 cycles",
+        "targets": [
+          "KIR2DL-1",
+          "KIR2DL-2",
+          "KIR2DL-3"
+        ],
+        "model_drug_id": "rc1",
+        "research_priority": 1,
+        "research_role": "primary"
+      },
+      "transport_mode": "relative_dose_analogy",
+      "allow_background_anchor": false
+    }
+  ],
+  "points": [
+    {
+      "level_id": "A1_B0.1",
+      "doses": {
+        "A": 1.0,
+        "B": 0.1
+      }
+    },
+    {
+      "level_id": "A2_B0.1",
+      "doses": {
+        "A": 2.0,
+        "B": 0.1
+      }
+    },
+    {
+      "level_id": "A4_B0.1",
+      "doses": {
+        "A": 4.0,
+        "B": 0.1
+      }
+    },
+    {
+      "level_id": "A6_B0.1",
+      "doses": {
+        "A": 6.0,
+        "B": 0.1
+      }
+    },
+    {
+      "level_id": "A10_B0.1",
+      "doses": {
+        "A": 10.0,
+        "B": 0.1
+      }
+    }
+  ],
+  "path_level_ids": [],
+  "profile": {
+    "population": {
+      "disease": [
+        "solid tumors"
+      ],
+      "modifiers": [
+        "Japanese patients",
+        "locally advanced or metastatic",
+        "progression on standard therapy, intolerance to standard therapy, or not eligible for standard therapy"
+      ],
+      "sex": [],
+      "purpose": "Open-label, non-randomized phase 1 study at two Japanese sites evaluating safety, tolerability, pharmacokinetics, immunogenicity, and antitumor activity of pembrolizumab monotherapy in Japanese patients with advanced solid tumors.",
+      "baseline": [
+        "10 Japanese patients with advanced solid tumors",
+        "5 male and 5 female",
+        "Age median 62.0 years, range 52.0–91.0",
+        "ECOG performance status: 0 in 4 patients and 1 in 6 patients",
+        "Primary tumors: NSCLC 5, melanoma 3, breast cancer 1, extramammary Paget’s disease 1",
+        "Prior systemic therapies median 5, range 0–13"
+      ],
+      "age_min": 20.0,
+      "age_min_operator": ">=",
+      "age_max": null
+    },
+    "eligibility": {
+      "inclusion": [
+        {
+          "clause_id": null,
+          "raw": "Histologically or cytologically confirmed locally advanced or metastatic solid tumor",
+          "topic": "histologically or cytologically confirmed locally advanced or metastatic solid tumor",
+          "operator": null,
+          "threshold": null,
+          "upper": null,
+          "unit": null,
+          "timing": null,
+          "negated": null,
+          "logic": null,
+          "logic_tokens": [
+            "or"
+          ]
+        },
+        {
+          "clause_id": null,
+          "raw": "Disease progression while on standard therapy, intolerance of standard therapy, or not eligible for standard therapy",
+          "topic": "disease progression while on standard therapy, intolerance of standard therapy, or not eligible for standard therapy",
+          "operator": null,
+          "threshold": null,
+          "upper": null,
+          "unit": null,
+          "timing": null,
+          "negated": null,
+          "logic": null,
+          "logic_tokens": [
+            "not",
+            "or"
+          ]
+        },
+        {
+          "clause_id": null,
+          "raw": "Age 20 years or older",
+          "topic": "age 20 years or older",
+          "operator": null,
+          "threshold": null,
+          "upper": null,
+          "unit": null,
+          "timing": null,
+          "negated": null,
+          "logic": null,
+          "logic_tokens": [
+            "or"
+          ]
+        },
+        {
+          "clause_id": null,
+          "raw": "ECOG performance status 0 or 1",
+          "topic": "ecog performance status 0 or 1",
+          "operator": null,
+          "threshold": null,
+          "upper": null,
+          "unit": null,
+          "timing": null,
+          "negated": null,
+          "logic": null,
+          "logic_tokens": [
+            "or"
+          ]
+        },
+        {
+          "clause_id": null,
+          "raw": "Adequate hematologic, hepatic, and renal functions",
+          "topic": "adequate hematologic, hepatic, and renal functions",
+          "operator": null,
+          "threshold": null,
+          "upper": null,
+          "unit": null,
+          "timing": null,
+          "negated": null,
+          "logic": null,
+          "logic_tokens": [
+            "and"
+          ]
+        },
+        {
+          "clause_id": null,
+          "raw": "Disease progression while on standard therapy or intolerance of, or ineligibility for, standard therapy",
+          "topic": "disease progression while on standard therapy or intolerance of, or ineligibility for, standard therapy",
+          "operator": null,
+          "threshold": null,
+          "upper": null,
+          "unit": null,
+          "timing": null,
+          "negated": null,
+          "logic": null,
+          "logic_tokens": [
+            "or"
+          ]
+        },
+        {
+          "clause_id": null,
+          "raw": "No chemotherapy, radiotherapy, or biological therapy in the 4 weeks before enrollment, with a 2-week interval specified for palliative radiotherapy and kinase inhibitors",
+          "topic": "no chemotherapy, radiotherapy, or biological therapy in the 4 weeks before enrollment, with a 2-week interval specified for palliative radiotherapy and kinase inhibitors",
+          "operator": null,
+          "threshold": null,
+          "upper": null,
+          "unit": null,
+          "timing": null,
+          "negated": null,
+          "logic": null,
+          "logic_tokens": [
+            "and",
+            "or"
+          ]
+        },
+        {
+          "clause_id": null,
+          "raw": "No previous PD-1, PD-L1, or cytotoxic T-lymphocyte-associated protein 4 inhibitor",
+          "topic": "no previous pd-1, pd-l1, or cytotoxic t-lymphocyte-associated protein 4 inhibitor",
+          "operator": null,
+          "threshold": null,
+          "upper": null,
+          "unit": null,
+          "timing": null,
+          "negated": null,
+          "logic": null,
+          "logic_tokens": [
+            "or"
+          ]
+        },
+        {
+          "clause_id": null,
+          "raw": "ECOG performance status 0 or 1",
+          "topic": "ecog performance status 0 or 1",
+          "operator": null,
+          "threshold": null,
+          "upper": null,
+          "unit": null,
+          "timing": null,
+          "negated": null,
+          "logic": null,
+          "logic_tokens": [
+            "or"
+          ]
+        },
+        {
+          "clause_id": null,
+          "raw": "Adequate hematologic, hepatic, and renal functions",
+          "topic": "adequate hematologic, hepatic, and renal functions",
+          "operator": null,
+          "threshold": null,
+          "upper": null,
+          "unit": null,
+          "timing": null,
+          "negated": null,
+          "logic": null,
+          "logic_tokens": [
+            "and"
+          ]
+        }
+      ],
+      "exclusion": [
+        {
+          "clause_id": null,
+          "raw": "Chemotherapy, radiotherapy, or biological therapy within 4 weeks before enrollment, except 2 weeks for palliative radiotherapy and kinase inhibitors",
+          "topic": "chemotherapy, radiotherapy, or biological therapy within 4 weeks before enrollment, except 2 weeks for palliative radiotherapy and kinase inhibitors",
+          "operator": null,
+          "threshold": null,
+          "upper": null,
+          "unit": null,
+          "timing": null,
+          "negated": null,
+          "logic": null,
+          "logic_tokens": [
+            "and",
+            "except",
+            "or"
+          ]
+        },
+        {
+          "clause_id": null,
+          "raw": "Previous treatment with a PD-1, PD-L1, or cytotoxic T-lymphocyte-associated protein 4 inhibitor",
+          "topic": "previous treatment with a pd-1, pd-l1, or cytotoxic t-lymphocyte-associated protein 4 inhibitor",
+          "operator": null,
+          "threshold": null,
+          "upper": null,
+          "unit": null,
+          "timing": null,
+          "negated": null,
+          "logic": null,
+          "logic_tokens": [
+            "or"
+          ]
+        },
+        {
+          "clause_id": null,
+          "raw": "Untreated and/or unstable central nervous system metastasis",
+          "topic": "untreated and/or unstable central nervous system metastasis",
+          "operator": null,
+          "threshold": null,
+          "upper": null,
+          "unit": null,
+          "timing": null,
+          "negated": null,
+          "logic": null,
+          "logic_tokens": [
+            "and",
+            "or"
+          ]
+        },
+        {
+          "clause_id": null,
+          "raw": "Presence of autoimmune disease",
+          "topic": "presence of autoimmune disease",
+          "operator": null,
+          "threshold": null,
+          "upper": null,
+          "unit": null,
+          "timing": null,
+          "negated": null,
+          "logic": null,
+          "logic_tokens": []
+        }
+      ],
+      "logic_groups": []
+    },
+    "configurations": [
+      {
+        "adjustments": [],
+        "drugs": [
+          {
+            "adjustments": [],
+            "aliases": [
+              "MK-3475",
+              "pembrolizumab"
+            ],
+            "classes": [
+              "anti-PD-1 monoclonal antibody"
+            ],
+            "formulation": null,
+            "kind": "drug",
+            "mechanisms": [
+              "Prevents PD-1 from binding PD-L1 and PD-L2",
+              "IgG4-κ humanized monoclonal antibody",
+              "pembrolizumab (MK-3475), IgG4-κ humanized monoclonal antibody"
+            ],
+            "name": "pembrolizumab",
+            "pathways": [
+              "PD-1/PD-L1/PD-L2 immune checkpoint pathway"
+            ],
+            "phases": [
+              {
+                "administration_days": "days 1 and 28",
+                "cycle": "cycle 1: initial 28 days",
+                "duration": null,
+                "end": "day 28",
+                "form": null,
+                "frequency": "initial dose, then day 28",
+                "infusion_duration": "30 min",
+                "infusion_rate": null,
+                "phase": "Cycle 1 first dose and rest",
+                "route": "Intravenous",
+                "start": "day 1"
+              },
+              {
+                "administration_days": "Q2W after day 28",
+                "cycle": null,
+                "duration": "until disease progression or intolerable toxicity",
+                "end": "disease progression or intolerable toxicity",
+                "form": null,
+                "frequency": "every 14 days",
+                "infusion_duration": "30 min",
+                "infusion_rate": null,
+                "phase": "Subsequent treatment",
+                "route": "Intravenous",
+                "start": "after day 28"
+              }
+            ],
+            "presence": "present",
+            "reporting_scope": "cohort",
+            "role": "escalated",
+            "schedule": "30-min intravenous infusion on days 1 and 28, Q2W thereafter until disease progression or intolerable toxicity",
+            "targets": [
+              "PD-1"
+            ],
+            "model_drug_id": "cmp1",
+            "research_priority": 1,
+            "research_role": "primary"
+          }
+        ],
+        "phase": "Phase I",
+        "role": "escalation",
+        "status": "actual"
+      }
+    ],
+    "dlt": {
+      "criteria": [
+        {
+          "clause_id": null,
+          "raw": "Grade 4 neutropenia lasting for ≥7 days",
+          "topic": "neutropenia lasting for  days",
+          "operator": ">=",
+          "threshold": 7.0,
+          "upper": null,
+          "unit": "days",
+          "timing": null,
+          "negated": null,
+          "logic": null,
+          "logic_tokens": []
+        },
+        {
+          "clause_id": null,
+          "raw": "Grade 3 or 4 neutropenia with a fever >38.5 °C and/or infection requiring antibiotic or anti-fungal treatment",
+          "topic": "or 4 neutropenia with a fever  °c and/or infection requiring antibiotic or anti-fungal treatment",
+          "operator": ">",
+          "threshold": 38.5,
+          "upper": null,
+          "unit": null,
+          "timing": null,
+          "negated": null,
+          "logic": null,
+          "logic_tokens": [
+            "and",
+            "or"
+          ]
+        },
+        {
+          "clause_id": null,
+          "raw": "Grade 4 thrombocytopenia",
+          "topic": "thrombocytopenia",
+          "operator": "=",
+          "threshold": 4.0,
+          "upper": null,
+          "unit": "grade",
+          "timing": null,
+          "negated": null,
+          "logic": null,
+          "logic_tokens": []
+        },
+        {
+          "clause_id": null,
+          "raw": "Grade 4 non-hematologic toxicity",
+          "topic": "non-hematologic toxicity",
+          "operator": "=",
+          "threshold": 4.0,
+          "upper": null,
+          "unit": "grade",
+          "timing": null,
+          "negated": null,
+          "logic": null,
+          "logic_tokens": []
+        },
+        {
+          "clause_id": null,
+          "raw": "Grade 3 non-hematologic toxicity (laboratory value) persisting for >1 week or requiring medical intervention",
+          "topic": "non-hematologic toxicity (laboratory value) persisting for  week or requiring medical intervention",
+          "operator": ">",
+          "threshold": 1.0,
+          "upper": null,
+          "unit": "week",
+          "timing": null,
+          "negated": null,
+          "logic": null,
+          "logic_tokens": [
+            "or"
+          ]
+        },
+        {
+          "clause_id": "dltc1",
+          "raw": "grade 4 neutropenia lasting for ≥7 days",
+          "topic": "neutropenia",
+          "operator": ">=",
+          "threshold": 7.0,
+          "upper": null,
+          "unit": "days",
+          "timing": "during cycle 1 (initial 28 days)",
+          "negated": false,
+          "logic": null,
+          "logic_tokens": []
+        },
+        {
+          "clause_id": "dltc2",
+          "raw": "grade 3 or 4 neutropenia with a fever >38.5 °C",
+          "topic": "febrile_neutropenia",
+          "operator": ">",
+          "threshold": 38.5,
+          "upper": null,
+          "unit": "°C",
+          "timing": "during cycle 1 (initial 28 days)",
+          "negated": false,
+          "logic": "OR",
+          "logic_tokens": [
+            "or"
+          ]
+        },
+        {
+          "clause_id": "dltc3",
+          "raw": "grade 3 or 4 neutropenia with infection requiring antibiotic or anti-fungal treatment",
+          "topic": "infectious_neutropenia",
+          "operator": "=",
+          "threshold": 3.0,
+          "upper": null,
+          "unit": "grade",
+          "timing": "during cycle 1 (initial 28 days)",
+          "negated": false,
+          "logic": "OR",
+          "logic_tokens": [
+            "or"
+          ]
+        },
+        {
+          "clause_id": "dltc4",
+          "raw": "grade 4 thrombocytopenia",
+          "topic": "thrombocytopenia",
+          "operator": "=",
+          "threshold": 4.0,
+          "upper": null,
+          "unit": "CTCAE grade",
+          "timing": "during cycle 1 (initial 28 days)",
+          "negated": false,
+          "logic": "OR",
+          "logic_tokens": []
+        },
+        {
+          "clause_id": "dltc5",
+          "raw": "grade 4 non-hematologic toxicity",
+          "topic": "nonhematologic_toxicity",
+          "operator": "=",
+          "threshold": 4.0,
+          "upper": null,
+          "unit": "CTCAE grade",
+          "timing": "during cycle 1 (initial 28 days)",
+          "negated": false,
+          "logic": "OR",
+          "logic_tokens": []
+        },
+        {
+          "clause_id": "dltc6",
+          "raw": "grade 3 non-hematologic toxicity (laboratory value) persisting for >1 week",
+          "topic": "nonhematologic_laboratory_toxicity",
+          "operator": ">",
+          "threshold": 1.0,
+          "upper": null,
+          "unit": "week",
+          "timing": "during cycle 1 (initial 28 days)",
+          "negated": false,
+          "logic": "OR",
+          "logic_tokens": []
+        },
+        {
+          "clause_id": "dltc7",
+          "raw": "grade 3 non-hematologic toxicity (laboratory value) requiring medical intervention",
+          "topic": "nonhematologic_laboratory_toxicity",
+          "operator": "=",
+          "threshold": 3.0,
+          "upper": null,
+          "unit": "grade",
+          "timing": "during cycle 1 (initial 28 days)",
+          "negated": false,
+          "logic": "OR",
+          "logic_tokens": []
+        }
+      ],
+      "exceptions": [],
+      "grading": "National Cancer Institute Common Terminology Criteria for Adverse Events, version 4.0",
+      "version": "CTCAE v4.0",
+      "observed": [],
+      "logic_groups": [],
+      "grading_version": "4.0"
+    },
+    "windows": [
+      {
+        "basis": "reported",
+        "cycles": "cycle 1",
+        "days": 28.0,
+        "end": "end of the initial 28 days",
+        "kind": "unclear",
+        "raw": "cycle 1 (the initial 28 days after the first administration)",
+        "start": "first administration, day 1"
+      }
+    ]
+  },
+  "target_dlt": 0.25,
+  "mapping_overrides": {},
+  "minimum_drug_similarity": 0.8
+}

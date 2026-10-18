@@ -153,9 +153,11 @@ def _article_summaries(library) -> dict[str, dict[str, int]]:
 
 
 def _library_page(roots: list[Path], library, *, model_scopes=None) -> None:
+    from phase1_web.hosted import is_public
+    public = is_public()
     st.title("Literature Library")
-    st.caption("Browse literature already present on disk. This page never starts crawling or model extraction.")
-    catalog = build_catalog(extraction_roots=roots)
+    st.caption("Browse the processed evidence in your selected library." if public else "Browse literature already present on disk. This page never starts crawling or model extraction.")
+    catalog = build_catalog(extraction_roots=roots, **({"xml_directories": [], "pdf_directories": []} if public else {}))
     from phase1_prediction.multidrug.workflow import phase_status
     if model_scopes is None:
         from phase1_prediction.multidrug.observations import load_model_library
@@ -171,7 +173,7 @@ def _library_page(roots: list[Path], library, *, model_scopes=None) -> None:
         summary['scopes'] += 1
         summary['points'] += len(item.observations)
     c1, c2, c3, c4 = st.columns(4)
-    c1.metric("Local articles", catalog["article_count"])
+    c1.metric("Library articles" if public else "Local articles", catalog["article_count"])
     c2.metric("Articles with v3 output", catalog["ready_extraction_count"])
     c3.metric("Phase I eligible articles", len(usable))
     c4.metric("Phase I model scopes", sum(r["scopes"] for r in usable.values()))
@@ -216,7 +218,8 @@ def _library_page(roots: list[Path], library, *, model_scopes=None) -> None:
         article = next(item for item in catalog["articles"] if item["document_id"] == selected_id)
         if article.get('source_url'):
             st.link_button("Open article in PMC", article["source_url"])
-        st.write({"Extraction result": article["extraction_root"], "Local PDF": article["pdf_path"], "Local XML": article["xml_path"]})
+        if not public:
+            st.write({"Extraction result": article["extraction_root"], "Local PDF": article["pdf_path"], "Local XML": article["xml_path"]})
     with st.expander("Library diagnostics"):
         st.write({"Skipped": library.skipped, "Notices": library.notices, "Duplicate results": library.duplicate_documents})
     _json_download("Download Literature Index", catalog, "v3_literature_index.json")

@@ -1,0 +1,27 @@
+# Creates a paid service only after you approve it in the Render dashboard.
+services:
+  - type: web
+    name: phase1-toxicity-v3
+    runtime: docker
+    plan: 2c-4g
+    region: virginia
+    branch: main
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    autoDeployTrigger: checksPass
+    healthCheckPath: /_stcore/health
+    numInstances: 1
+    disk:
+      name: phase1-data
+      mountPath: /var/data
+      sizeGB: 10
+    envVars:
+      - key: PHASE1_DEPLOYMENT
+        value: public
+      - key: PHASE1_DATA_ROOT
+        value: /var/data/phase1
+      - key: PHASE1_SHARED_BUNDLE_URL
+        value: ""
+      - key: PHASE1_SHARED_BUNDLE_SHA256
+        value: ""
+      # Deliberately no OPENAI_API_KEY, provider credentials, or local .env file.

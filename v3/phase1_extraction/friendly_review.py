@@ -439,7 +439,19 @@ def _build_text_units(extraction: ReportedExtraction) -> list[FriendlyReviewUnit
         dlt_evidence.append(definition.evidence)
     for observation in extraction.dlt_observations:
         if observation.toxicities_raw:
-            dlt_lines.extend(_block(f"Observed DLTs ({cohort_labels.get(observation.cohort_id or '', 'Cohort not identified')})", observation.toxicities_raw))
+            label = {
+                "reported": "Observed DLTs",
+                "not_reported": "Toxicity notes — DLT result not reported",
+                "explicitly_unreported": "Toxicity notes — DLT result explicitly unreported",
+                "unclear": "Toxicity notes — DLT status unclear",
+                "explicitly_not_evaluable": "Toxicity notes — DLT not evaluable",
+                "not_applicable": "Toxicity notes — DLT not applicable",
+                "conflicting": "Toxicity notes — conflicting DLT status",
+            }[observation.reporting_status]
+            cohort_label = cohort_labels.get(observation.cohort_id or "", "Cohort not identified")
+            dlt_lines.extend(_block(f"{label} ({cohort_label})", observation.toxicities_raw))
+            if observation.reporting_status != "reported":
+                dlt_lines.extend(_block("Reporting note", [observation.provenance.note]))
             dlt_ids.append(observation.observation_id)
             dlt_evidence.append(observation.evidence)
     for unresolved in extraction.unresolved_items:

@@ -1,0 +1,21 @@
+# Build from an explicit allowlist. Never send local data or credentials to Docker.
+**
+!Dockerfile
+!requirements-deploy.txt
+!v3/
+!v3/pyproject.toml
+!v3/phase1_acquisition/**
+!v3/phase1_extraction/**
+!v3/phase1_prediction/**
+!v3/phase1_project/**
+!v3/phase1_simulation/**
+!v3/phase1_web/**
+!v3/.streamlit/
+!v3/.streamlit/config.toml
+v3/**/__pycache__/**
+v3/**/*.pyc
+v3/**/.env*
+v3/**/secrets.*
+v3/**/*.pem
+v3/**/*.key
+v3/**/.DS_Store

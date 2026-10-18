@@ -7,6 +7,7 @@ import hashlib
 import json
 import math
 import mimetypes
+import os
 from functools import wraps
 from pathlib import Path
 from typing import Any, Callable
@@ -145,15 +146,17 @@ def build_request_body(
     # Legacy versions remain readable locally, while every new extraction has
     # one unambiguous schema version in both synchronous and Batch requests.
     output_format['schema']['properties']['schema_version']['enum'] = [SCHEMA_VERSION]
-    return {
+    body = {
         "model": model,
         "instructions": load_prompt(),
         "input": [{"role": "user", "content": _content(packet, prior, image_paths)}],
         "text": {"format": output_format},
-        "reasoning": {"effort": reasoning_effort},
         "max_output_tokens": max_output_tokens,
         "store": False,
     }
+    if reasoning_effort:
+        body["reasoning"] = {"effort": reasoning_effort}
+    return body
 
 
 def response_payload(response: Any) -> Any:
@@ -216,7 +219,9 @@ def call_model(
     max_output_tokens: int,
     client: OpenAI | None = None,
 ) -> tuple[ReportedExtraction, Any]:
-    client = client or OpenAI()
+    if client is None and os.getenv("PHASE1_DEPLOYMENT", "").strip().lower() == "public":
+        raise ValueError("Public extraction requires an explicit user API client")
+    client = client if client is not None else OpenAI()
     body = build_request_body(
         packet=packet,
         prior=prior,
@@ -518,7 +523,12 @@ def _extract_packets(
     raw_request_dir: Path | None = None,
     parsed_packet_dir: Path | None = None,
     resume: bool = True,
+    sanitize_errors: bool = False,
 ) -> tuple[ReportedExtraction, list[dict[str, Any]]]:
+    public = os.getenv("PHASE1_DEPLOYMENT", "").strip().lower() == "public"
+    sanitize_errors = sanitize_errors or public
+    if client is None and public:
+        raise ValueError("Public extraction requires an explicit user API client")
     raw_response_dir.mkdir(parents=True, exist_ok=True)
     raw_request_dir = raw_request_dir or raw_response_dir.parent / "raw_requests"
     parsed_packet_dir = parsed_packet_dir or raw_response_dir.parent / "parsed_packets"
@@ -568,7 +578,7 @@ def _extract_packets(
                 if budget_guard is not None:
                     budget_guard.admit_request(body)
                 if caller is call_model:
-                    active_client = active_client or OpenAI()
+                    active_client = active_client if active_client is not None else OpenAI()
                     response = active_client.responses.create(**body)
                     payload = response_payload(response)
                     usage = payload.get("usage")
@@ -606,7 +616,7 @@ def _extract_packets(
                 "request_sha256": request_hash,
                 "failed_at_utc": utc_now(),
                 "error_type": type(error).__name__,
-                "message": str(error),
+                "message": "Extraction request failed; provider details are withheld." if sanitize_errors else str(error),
                 "usage": usage.model_dump(mode="json") if hasattr(usage, "model_dump") else usage,
                 "resumed_without_request": resumed,
             })

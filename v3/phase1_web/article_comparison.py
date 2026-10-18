@@ -20,6 +20,8 @@ def detail_rows(node,path=''):
 
 
 def _render(st,library):
+    from phase1_web.hosted import is_public
+    public = is_public()
     st.title('Article-to-article similarity')
     st.caption('Seven indicator groups. Design and dose magnitudes do not score. Each drug, condition and treatment phase is aligned once. Missing information is not assigned a similarity score.')
     mode=st.radio('Comparison scope',['pretrial','full'],format_func=lambda x:'Pre-trial information only' if x=='pretrial' else 'Full article (includes observed baseline and toxicity descriptions)',horizontal=True)
@@ -33,13 +35,19 @@ def _render(st,library):
         for i,k in enumerate(LABELS):
             with cols[i%3]:weights[k]=st.number_input(LABELS[k],min_value=0.,max_value=1.,value=weights[k],step=.05,key='pairweight_'+k)
     if sum(weights.values())<=0:st.error('Set at least one positive weight.');return
-    selected=st.multiselect('Articles in matrix',ids,default=ids[:min(20,len(ids))])
-    matrix=pd.DataFrame(index=selected,columns=selected,dtype=float);pairs={}
+    selected=st.multiselect('Articles in matrix',ids,default=ids[:min(20,len(ids))],
+                           **({'max_selections':20} if public else {}))
+    if any(article_id not in records for article_id in selected):
+        st.error('The selected articles are unavailable in this library. Select the articles again.')
+        return
+    if public and len(selected)>20:
+        st.error('Select at most 20 articles for a comparison matrix on the public website.')
+        return
+    matrix=pd.DataFrame(index=selected,columns=selected,dtype=float)
     for i,a in enumerate(selected):
         for b in selected[i:]:
             r=compare_profiles(records[a],records[b],mode=mode,weights=weights)
             matrix.loc[a,b]=matrix.loc[b,a]=r['similarity']
-            pairs[a,b]=r
     st.write('Similarity (0–1; blank = insufficient comparable information)')
     st.dataframe(matrix, column_config={k:st.column_config.NumberColumn(k,format='%.3f') for k in selected},use_container_width=True)
     if not selected:return
@@ -57,7 +65,10 @@ def _render(st,library):
 
 def render(st,library):
     from phase1_prediction.similarity_engine import similarity_context
-    engine=st.selectbox('Similarity engine',['local','openai'],format_func=lambda x:'Local structured + text comparison' if x=='local' else 'OpenAI embeddings + structured comparison',index=['local','openai'].index(st.session_state.get('similarity_engine_preference','local')),key='pair_similarity_engine')
+    from phase1_web.hosted import is_public
+    engines = ['local'] if is_public() else ['local','openai']
+    preferred = st.session_state.get('similarity_engine_preference','local')
+    engine=st.selectbox('Similarity engine',engines,format_func=lambda x:'Local structured + text comparison' if x=='local' else 'OpenAI embeddings + structured comparison',index=engines.index(preferred) if preferred in engines else 0,key='pair_similarity_engine')
     st.session_state['similarity_engine_preference']=engine
     model=st.selectbox('Embedding model',['text-embedding-3-small','text-embedding-3-large'],key='pair_embedding_model') if engine=='openai' else 'text-embedding-3-small'
     if engine=='openai':

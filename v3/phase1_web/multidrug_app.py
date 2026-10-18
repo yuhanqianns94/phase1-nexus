@@ -168,12 +168,15 @@ def _prediction_output(result, native, comparisons=None):
             saved=save_analysis(native.STATE_ROOT,{'prediction':result,'simulation':st.session_state.get('multidrug_simulation'),
                 'design_comparison':st.session_state.get('multidrug_search'),
                 'draft':result['target'],'active_method':next(iter(result['methods']))})
-            st.success(str(saved))
+            st.success('Analysis saved in your private session.' if getattr(native, 'PUBLIC', False) else str(saved))
         except (ValueError,RuntimeError,OSError) as error:
             st.error(str(error))
 
 def main(native):
     st.set_page_config(page_title='Phasal V3 Bayesian', layout='wide')
+    from phase1_web.hosted import public_session, is_public
+    native = public_session(native, st)
+    public = is_public()
     # Keep BOIN inputs when its widgets are absent on another workflow page.
     for key in list(st.session_state):
         keep_candidate_input=key.startswith('boin_candidates_') and key.endswith(('_source','_edit_units','_unit','_ref'))
@@ -198,7 +201,17 @@ def main(native):
     pending=st.session_state.pop('workflow_next_page',None)
     if pending in PAGE_LABELS:
         st.session_state['workflow_page']=pending
-    page = st.sidebar.radio('Workflow', list(PAGE_LABELS), format_func=PAGE_LABELS.__getitem__, key='workflow_page')
+    pages = {key: value for key, value in PAGE_LABELS.items()
+             if not public or key not in {'Settings', 'Extraction Jobs'}}
+    if public and native.LIBRARY_SOURCE == 'personal':
+        pages['Upload literature'] = 'Upload and extract literature'
+    if st.session_state.get('workflow_page') not in pages:
+        st.session_state['workflow_page'] = next(iter(pages))
+    page = st.sidebar.radio('Workflow', list(pages), format_func=pages.__getitem__, key='workflow_page')
+    if page == 'Upload literature':
+        from phase1_web.user_library import render_user_library
+        render_user_library(st, native.WORKSPACE)
+        return
     st.sidebar.caption('Your trial draft saves automatically. Simulation is optional.')
     previous_page=st.session_state.get('multidrug_previous_page')
     st.session_state['multidrug_previous_page']=page
@@ -213,9 +226,10 @@ def main(native):
         with st.expander('Input diagnostics and exclusions'):
             st.json({'diagnostics':diagnostics,'excluded':[{'scope':s.scope_id,'records':s.exclusions} for s in scopes if s.exclusions],
                      'grouping':[{'scope':s.scope_id,**s.lineage['grouping']} for s in scopes if s.lineage.get('grouping')]})
-        with st.expander('Precompute and cache Phase I article posteriors'):
-            from phase1_web.prior_cache import render_source_cache
-            render_source_cache(st, scopes, backends=BACKENDS, key='library_prior_cache')
+        if not public:
+            with st.expander('Precompute and cache Phase I article posteriors'):
+                from phase1_web.prior_cache import render_source_cache
+                render_source_cache(st, scopes, backends=BACKENDS, key='library_prior_cache')
     elif page == 'Article comparison':
         from phase1_web.article_comparison import render
         render(st, library)
@@ -305,7 +319,13 @@ def main(native):
         if st.button('Find matching articles',type='primary'):
             try:
                 with st.spinner('Comparing your plan with the Phase I library'):
-                    st.session_state['multidrug_preview']=preview_planned(library,draft,**config['query'])
+                    if public:
+                        from phase1_web.jobs import run_task
+                        st.session_state['multidrug_preview'] = run_task('preview', {
+                            'roots': list(library.source_roots), 'target': draft,
+                            'options': config['query']}, native.WORKSPACE)
+                    else:
+                        st.session_state['multidrug_preview']=preview_planned(library,draft,**config['query'])
             except (ValueError,RuntimeError,OSError) as error:st.error(str(error))
         if st.session_state.get('multidrug_preview') is None:
             st.info('Find matching articles to see drug correspondence and abstracts.')
@@ -456,15 +476,18 @@ def main(native):
                 if not checked['ready']:st.info('No selected article is usable for Method 3 at these settings. Review its exclusions above.')
             except (ValueError,RuntimeError) as error:
                 st.error(str(error));review_ready=False
-        with st.expander('Prior cache'):
-            from phase1_web.prior_cache import render_source_cache, render_target_cache
-            if synthesis == 'target_power_prior':
-                render_target_cache(st, library, target, st.session_state.get('multidrug_preview'),
-                    included, decisions, weights, threshold, top, backend, power_settings,
-                    review_ready, key='target_prior_cache_' + backend, selected_prior=selected_prior, scopes=scopes)
-            else:
-                render_source_cache(st, scopes, backends=(backend,), allow_backend_selection=False,
-                    key='target_source_cache_' + backend, selected_prior=selected_prior)
+        if public:
+            st.caption('Compatible published article posteriors are reused automatically. Missing fits are queued; target-specific calculations stay private to this session.')
+        else:
+            with st.expander('Prior cache'):
+                from phase1_web.prior_cache import render_source_cache, render_target_cache
+                if synthesis == 'target_power_prior':
+                    render_target_cache(st, library, target, st.session_state.get('multidrug_preview'),
+                        included, decisions, weights, threshold, top, backend, power_settings,
+                        review_ready, key='target_prior_cache_' + backend, selected_prior=selected_prior, scopes=scopes)
+                else:
+                    render_source_cache(st, scopes, backends=(backend,), allow_backend_selection=False,
+                        key='target_source_cache_' + backend, selected_prior=selected_prior)
         comparison_spec = fingerprint([selection_spec,target.model_dump(mode='json'),draw_count,sorted(included),decisions])
         if comparison_spec != st.session_state.get('multidrug_comparison_request'):
             st.session_state['multidrug_results']={}
@@ -482,10 +505,20 @@ def main(native):
             try:
                 if st.session_state.get('multidrug_preview') and not included:
                     raise ValueError('Select at least one source scope or preview the candidates again.')
-                result = predict(library,target,backend=backend,synthesis=synthesis,threshold=threshold,weights=weights,
-                                 top_articles=top,include_series_keys=included,
-                                 draw_count=int(draw_count),progress=update,relevance_decisions=decisions,power_prior=power_settings,prior=selected_prior,
-                                 similarity_engine=engine,embedding_model=embedding_model).to_dict()
+                options = dict(backend=backend,synthesis=synthesis,threshold=threshold,weights=weights,
+                    top_articles=top,include_series_keys=included,draw_count=int(draw_count),
+                    relevance_decisions=decisions,power_prior=power_settings,prior=selected_prior,
+                    similarity_engine=engine,embedding_model=embedding_model)
+                if public:
+                    from phase1_web.jobs import run_task
+                    progress.info('Queued calculations run one at a time so other visitors can keep using the website.')
+                    result = run_task('predict', {'roots':list(library.source_roots),
+                        'target':target.model_dump(mode='json'),
+                        'options':{**options, 'prior':selected_prior.model_dump(mode='json')},
+                        'shared_posterior_root':str(native.SHARED_POSTERIOR_ROOT) if native.SHARED_POSTERIOR_ROOT else None},
+                        native.WORKSPACE)
+                else:
+                    result = predict(library,target,progress=update,**options).to_dict()
                 activate_prediction(st.session_state,result,recomputed=True)
                 st.session_state['multidrug_result_backend'] = result_key
                 st.session_state.setdefault('multidrug_results',{})[result_key]=result
@@ -510,8 +543,8 @@ def main(native):
                     result['target'].get('profile',{}).get('planning',{}).get('exploration',{}).get('relative',False))
                 if needs_evaluation:
                     if st.button('Evaluate BOIN candidate regimens'):
-                        from phase1_prediction.multidrug.service import evaluate_frozen_prediction
-                        new=evaluate_frozen_prediction(result,candidates)
+                        from phase1_web.jobs import evaluate_for_ui
+                        new=evaluate_for_ui(result,candidates)
                         activate_prediction(st.session_state,new,recomputed=True)
                         st.session_state['multidrug_results']={new['evidence_contract']['backend']:new}
                         st.rerun()
@@ -534,6 +567,8 @@ def main(native):
             return
         simulation_input=simulation_view(result,path_ids)
         st.subheader('Shared simulation settings')
+        if public:
+            st.caption('Public calculations allow up to 20,000 trials per design and 50,000 across a design comparison.')
         st.caption(f"Applies to Run BOIN and Compare designs. Target DLT probability: {result['target']['target_dlt']:.2f}, inherited from the trial plan.")
         m=st.number_input('Posterior scenarios',1,1000,100,key='boin_design_scenarios')
         repetitions=st.number_input('Trials per scenario',1,1000,100,key='boin_design_repetitions')
@@ -558,9 +593,14 @@ def main(native):
         if st.button('Run BOIN'):
             try:
                 with st.spinner('Simulating'):
-                    sim=simulate_regimen_path(simulation_input,method_key=next(iter(result['methods'])),
-                        settings=boin_settings,
-                        posterior_curve_count=int(m),trials_per_curve=int(repetitions))
+                    options = dict(method_key=next(iter(result['methods'])), settings=boin_settings,
+                        posterior_curve_count=int(m), trials_per_curve=int(repetitions))
+                    if public:
+                        from phase1_web.jobs import run_task
+                        sim = run_task('simulate', {'prediction':simulation_input,
+                            'options':{**options, 'settings':asdict(boin_settings)}}, native.WORKSPACE)
+                    else:
+                        sim=simulate_regimen_path(simulation_input,**options)
                 st.session_state['multidrug_simulation']=sim
             except (ValueError, RuntimeError) as error: st.error(str(error))
         if st.session_state.get('multidrug_simulation'):
@@ -578,11 +618,17 @@ def main(native):
             if st.button('Compare designs'):
                 try:
                     with st.spinner('Comparing designs using the same posterior scenarios and random seed'):
-                        search=search_boin_parameters(simulation_input,method_key=next(iter(result['methods'])),
+                        options = dict(method_key=next(iter(result['methods'])),
                             target_dlt=[result['target']['target_dlt']],cohort_size=cohorts,max_sample_size=sizes,
                             elimination_cutoff=[elimination],stop_rule_m=[int(stopping)],
                             base_settings=BoinSettings(start_index=int(start_index)-1,acceptable_low=low,acceptable_high=high),
                             posterior_curve_count=int(m),trials_per_curve=int(repetitions))
+                        if public:
+                            from phase1_web.jobs import run_task
+                            search = run_task('search', {'prediction':simulation_input,
+                                'options':{**options, 'base_settings':asdict(options['base_settings'])}}, native.WORKSPACE)
+                        else:
+                            search=search_boin_parameters(simulation_input,**options)
                     st.session_state['multidrug_search']=search
                 except (ValueError,RuntimeError) as error:st.error(str(error))
             if st.session_state.get('multidrug_search'):

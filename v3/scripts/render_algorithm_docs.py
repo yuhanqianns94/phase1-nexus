@@ -1,4 +1,4 @@
-"""Build offline English/Chinese HTML explanations with native MathML.
+"""Build offline English HTML explanations with native MathML.
 
 Requires Pandoc; pass --pandoc /path/to/pandoc when it is not on PATH.
 """
@@ -22,7 +22,7 @@ def main():
         header.write_text('<style>\n' + css + '\n</style>')
         for suffix, language, title in (
             ('', 'en', 'V3 algorithms and mathematical explanation'),
-            ('_ZH', 'zh-CN', '从文献到毒性曲线：V3 项目讲解'),
+            ('_ZH', 'en', 'V3 algorithms and mathematical explanation'),
         ):
             source = docs / ('V3_ALGORITHMS_AND_MATHEMATICAL_SPECIFICATION' + suffix + '.md')
             destination = source.with_suffix('.html')

@@ -1,0 +1,15 @@
+# Runtime versions used for local precomputed caches. Update together and recheck caches.
+altair==6.2.2
+arviz==0.22.0
+jax==0.7.2
+jaxlib==0.7.2
+matplotlib==3.11.1
+numpy==2.5.3
+numpyro==0.19.0
+openai==2.54.0
+pydantic==2.13.5
+PyMuPDF==1.28.2
+Pillow==11.3.0
+requests==2.34.2
+scipy==1.18.1
+streamlit==1.63.0

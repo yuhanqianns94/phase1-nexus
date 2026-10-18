@@ -4,8 +4,7 @@ from phase1_project.runtime import activate_project_root
 
 
 def acquire() -> None:
-    activate_project_root()
-    from .acquire import main
+    from .cli import main
     main()
 
 

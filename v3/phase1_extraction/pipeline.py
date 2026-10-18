@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from functools import wraps
+import os
 from pathlib import Path
 from typing import Any
 
@@ -34,10 +35,11 @@ def ingest(
     document_id: str,
     source_paths: list[Path],
     output_root: Path,
+    material_roles: dict[str, str] | None = None,
 ) -> ArticlePaths:
     paths = ArticlePaths(output_root=Path(output_root), document_id=document_id)
     paths.ensure()
-    materials = register_materials(document_id=document_id, source_paths=source_paths)
+    materials = register_materials(document_id=document_id, source_paths=source_paths, roles=material_roles)
     manifest_payload = {
         "format": "phase1_material_manifest_v3",
         "document_id": document_id,
@@ -55,7 +57,9 @@ def _load_materials(paths: ArticlePaths) -> list[Material]:
     return [Material.model_validate(item) for item in payload["materials"]]
 
 
-def parse_sources(paths: ArticlePaths, *, render_pages: bool = True) -> DocumentIR:
+def parse_sources(
+    paths: ArticlePaths, *, render_pages: bool = True, max_asset_bytes: int | None = None,
+) -> DocumentIR:
     materials = _load_materials(paths)
     document = build_document_ir(
         document_id=paths.document_id,
@@ -64,6 +68,11 @@ def parse_sources(paths: ArticlePaths, *, render_pages: bool = True) -> Document
         table_image_dir=paths.table_images,
         render_pages=render_pages,
     )
+    if max_asset_bytes is not None:
+        asset_bytes = sum(path.stat().st_size for folder in (paths.page_images, paths.table_images)
+                          for path in folder.rglob("*") if path.is_file())
+        if asset_bytes > max_asset_bytes:
+            raise ValueError("Parsed assets exceed the upload processing limit.")
     write_json(paths.document_ir, document)
     manifest = read_json(paths.manifest)
     record_stage(
@@ -165,7 +174,13 @@ def _extract_reported(
     max_packet_chars: int = DEFAULT_MAX_PACKET_CHARS,
     budget_guard: BudgetGuard | None = None,
     resume: bool = True,
+    client: Any = None,
+    sanitize_errors: bool = False,
 ) -> ReportedExtraction | None:
+    public = os.getenv("PHASE1_DEPLOYMENT", "").strip().lower() == "public"
+    sanitize_errors = sanitize_errors or public
+    if execute_model and public and client is None:
+        raise ValueError("Public extraction requires an explicit user API client")
     document, packets = prepare_packets(paths, max_packet_chars=max_packet_chars)
     if reported_input is not None:
         extraction = ReportedExtraction.model_validate(read_json(reported_input))
@@ -202,6 +217,8 @@ def _extract_reported(
                 raw_request_dir=paths.raw_requests,
                 parsed_packet_dir=paths.parsed_packets,
                 resume=resume,
+                client=client,
+                sanitize_errors=sanitize_errors,
             )
         except Exception as error:
             manifest = read_json(paths.manifest)
@@ -209,7 +226,9 @@ def _extract_reported(
                 manifest,
                 "extract",
                 status="failed",
-                details={"error_type": type(error).__name__, "message": str(error)},
+                details={"error_type": type(error).__name__, "message": (
+                    "Extraction request failed; provider details are withheld." if sanitize_errors else str(error)
+                )},
             )
             write_json(paths.manifest, manifest)
             raise
@@ -302,9 +321,17 @@ def _run_pipeline(
     max_packet_chars: int = DEFAULT_MAX_PACKET_CHARS,
     budget_guard: BudgetGuard | None = None,
     resume: bool = True,
+    client: Any = None,
+    sanitize_errors: bool = False,
+    max_parsed_asset_bytes: int | None = None,
+    material_roles: dict[str, str] | None = None,
 ) -> ArticlePaths:
-    paths = ingest(document_id=document_id, source_paths=source_paths, output_root=output_root)
-    parse_sources(paths)
+    paths = ingest(document_id=document_id, source_paths=source_paths, output_root=output_root,
+                   material_roles=material_roles)
+    if max_parsed_asset_bytes is None:
+        parse_sources(paths)
+    else:
+        parse_sources(paths, max_asset_bytes=max_parsed_asset_bytes)
     extraction = _extract_reported(
         paths,
         reported_input=reported_input,
@@ -315,6 +342,8 @@ def _run_pipeline(
         max_packet_chars=max_packet_chars,
         budget_guard=budget_guard,
         resume=resume,
+        client=client,
+        sanitize_errors=sanitize_errors,
     )
     if extraction is not None:
         resolve_reported(paths)

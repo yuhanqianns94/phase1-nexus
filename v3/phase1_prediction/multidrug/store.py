@@ -7,11 +7,26 @@ import json
 from pathlib import Path
 import shutil
 import tempfile
+from contextlib import contextmanager
+from contextvars import ContextVar
 
 import numpy as np
 
 from . import VERSION, validate_backend
 from .contracts import ModelScope, PriorSpec, SamplerSpec, fingerprint
+
+
+_SOURCE_FALLBACKS = ContextVar("source_posterior_fallbacks", default=())
+
+
+@contextmanager
+def posterior_cache_context(roots):
+    """Read verified published source fits without writing into shared releases."""
+    token = _SOURCE_FALLBACKS.set(tuple(Path(p) for p in roots))
+    try:
+        yield
+    finally:
+        _SOURCE_FALLBACKS.reset(token)
 
 
 def numerical_dependencies():
@@ -37,11 +52,18 @@ def source_fit_id(scope, backend, prior, sampler):
 
 
 class PosteriorStore:
-    def __init__(self, root):
+    def __init__(self, root, *, fallback_roots=None):
         self.root = Path(root)
+        self.fallback_roots = tuple(p for p in (
+            _SOURCE_FALLBACKS.get() if fallback_roots is None else map(Path, fallback_roots)
+        ) if p.resolve() != self.root.resolve())
 
     def load(self, fit_id):
         directory = self.root / fit_id
+        if not (directory / "manifest.json").is_file():
+            for root in self.fallback_roots:
+                if (root / fit_id / "manifest.json").is_file():
+                    return PosteriorStore(root, fallback_roots=()).load(fit_id)
         manifest = json.loads((directory / "manifest.json").read_text())
         if manifest["source_fit_id"] != fit_id or manifest["model_version"] != VERSION:
             raise ValueError("Incompatible posterior identity/version")
@@ -90,6 +112,10 @@ class PosteriorStore:
         from .prior_presets import canonical_prior
         prior,sampler=canonical_prior(prior, backend),sampler or SamplerSpec()
         fit_id=source_fit_id(scope,backend,prior,sampler)
+        if not (self.root / fit_id / "manifest.json").is_file() and any(
+            (root / fit_id / "manifest.json").is_file() for root in self.fallback_roots
+        ):
+            return self.load(fit_id)
         self.root.mkdir(parents=True,exist_ok=True)
         with (self.root/(fit_id+'.lock')).open('a') as lock:
             fcntl.flock(lock,fcntl.LOCK_EX)

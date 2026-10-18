@@ -1,0 +1,55 @@
+name: Website checks
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: website-checks-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      JAX_PLATFORMS: cpu
+      OMP_NUM_THREADS: "1"
+      OPENBLAS_NUM_THREADS: "1"
+      MKL_NUM_THREADS: "1"
+      XLA_PYTHON_CLIENT_PREALLOCATE: "false"
+      STREAMLIT_BROWSER_GATHER_USAGE_STATS: "false"
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: |
+            requirements-deploy.txt
+            v3/pyproject.toml
+      - name: Install pinned runtime and tests
+        run: python -m pip install -c requirements-deploy.txt './v3[test]'
+      - name: Run tests without provider credentials
+        working-directory: v3
+        run: python -m pytest
+      - name: Build hosted image
+        run: docker build --tag phase1-website:test .
+      - name: Check hosted startup and HTTP health without owner keys
+        run: |
+          docker run -d --name phase1-smoke -p 8501:8501 phase1-website:test
+          trap 'docker logs phase1-smoke; docker rm -f phase1-smoke' EXIT
+          for attempt in $(seq 1 60); do
+            if curl --fail --silent http://127.0.0.1:8501/_stcore/health; then
+              exit 0
+            fi
+            sleep 2
+          done
+          exit 1

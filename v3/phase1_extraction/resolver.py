@@ -250,9 +250,22 @@ def _normalized_curve_dose(cohort: Cohort) -> tuple[float | None, str | None, st
 
     def split_unit(value: str) -> tuple[str, str] | None:
         canonical = value.casefold().replace("µ", "u").replace("μ", "u")
-        canonical = canonical.replace("²", "2").replace(" ", "")
+        canonical = canonical.translate(str.maketrans({"²": "2", "¹": "1", "⁻": "-", "−": "-"}))
+        canonical = re.sub(r"\s+", "", canonical)
         match = re.fullmatch(r"(mcg|ug|mg|g)(.*)", canonical)
-        return (match.group(1), match.group(2)) if match else None
+        if match is None:
+            return None
+        # Reciprocal exponents are notation changes, not body-size or schedule
+        # conversions. Preserve unsupported powers and every other suffix.
+        reciprocal_units = {("kg", "1"): "kg", ("m", "2"): "m2",
+                            ("day", "1"): "day", ("d", "1"): "d", ("h", "1"): "h"}
+
+        def reciprocal(part: re.Match[str]) -> str:
+            denominator = reciprocal_units.get((part.group(1), part.group(2)))
+            return f"/{denominator}" if denominator else part.group(0)
+
+        suffix = re.sub(r"[·⋅*]?(kg|m|day|d|h)\^?-(1|2)(?!\d)", reciprocal, match.group(2))
+        return match.group(1), suffix
 
     raw_parts = split_unit(raw_unit)
     normalized_parts = split_unit(normalized_unit)
@@ -764,12 +777,15 @@ def _scope_identity(scope: ResultScope) -> tuple:
 def _specific_reported_scope(
     extraction: ReportedExtraction, broad: ResultScope, cohort: Cohort,
 ) -> ResultScope | None:
-    """Prefer a complete nested report only when the broad row has no facts.
+    """Prefer an explicit nested result only when the broad row has no facts.
 
     Preserve distinct windows/cutoffs and conflicting or separately reported
-    observations. The original scopes and evidence are never changed.
+    observations. An explicit nested zero can resolve an empty broad projection
+    even when missing material keeps both scopes partial. Coverage flags remain
+    unchanged, and any design denominator still uses the existing R3 rule.
+    The original scopes and evidence are never changed.
     """
-    if broad.dlt_results_coverage != "complete" or broad.explicit_no_dlt_in_scope or broad.unresolved_positive_dlt:
+    if broad.dlt_results_coverage not in {"complete", "partial"} or broad.explicit_no_dlt_in_scope or broad.unresolved_positive_dlt:
         return None
     own_observations = [o for o in extraction.dlt_observations
                         if o.result_scope_id == broad.result_scope_id and o.cohort_id == cohort.cohort_id]
@@ -785,13 +801,19 @@ def _specific_reported_scope(
     for narrow in extraction.result_scopes:
         if not (set(narrow.cohort_ids) < set(broad.cohort_ids)) or cohort.cohort_id not in narrow.cohort_ids:
             continue
-        if _scope_identity(narrow) != _scope_identity(broad) or narrow.dlt_results_coverage != "complete" or narrow.unresolved_positive_dlt:
+        if _scope_identity(narrow) != _scope_identity(broad) or narrow.unresolved_positive_dlt:
+            continue
+        if narrow.dlt_results_coverage != "complete" and not (
+            narrow.dlt_results_coverage == "partial" and narrow.explicit_no_dlt_in_scope
+        ):
             continue
         observations = [o for o in extraction.dlt_observations
                         if o.result_scope_id == narrow.result_scope_id and o.cohort_id == cohort.cohort_id]
         if any(o.study_id != narrow.study_id or o.window_id != narrow.window_id for o in observations):
             continue
         numerator, _, issues = _resolve_numerator(observations, narrow, cohort, {})
+        if narrow.explicit_no_dlt_in_scope and numerator.value != 0:
+            continue
         denominator, _, _, n_issues, blocked = _select_denominator(
             cohort=cohort, scope=narrow, observations=observations,
             counts=extraction.population_counts,
@@ -800,7 +822,11 @@ def _specific_reported_scope(
             derived_counts={}, study_id=narrow.study_id, part_id=narrow.part_id,
             arm_id=narrow.arm_id, window_id=narrow.window_id,
         )
-        if (not issues and not n_issues and not blocked and denominator.basis == "reported"
+        if denominator.value is None and not blocked and not n_issues and narrow.explicit_no_dlt_in_scope:
+            series = next((s for s in extraction.dose_series if s.series_id == cohort.series_id), None)
+            design = next((d for d in extraction.designs if series is not None and d.design_id == series.design_id), None)
+            denominator = _r3_denominator(cohort, design, numerator)
+        if (not issues and not n_issues and not blocked and denominator.basis in {"reported", "design_inferred"}
             and denominator.value is not None and numerator.value is not None
             and numerator.basis in {"reported", "derived"} and 0 <= numerator.value <= denominator.value):
             candidates.append(narrow)

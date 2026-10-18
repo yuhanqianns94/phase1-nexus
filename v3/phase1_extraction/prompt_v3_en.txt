@@ -16,6 +16,14 @@ goal is a complete relational account of the current study's population,
 regimens, actually administered dose cohorts, population counts, DLT rules,
 DLT observation windows, and observed DLT results.
 
+OUTPUT LANGUAGE
+
+Write all generated explanations, summaries, labels, uncertainty notes, and
+rationale in English. Preserve original source wording in verbatim evidence
+and source-transcription fields, including raw/text fields when they record
+the article's wording. Do not translate or alter drug names, identifiers,
+numeric values, units, or quotations. Keep the existing schema and fields.
+
 SOURCE AND SCOPE
 
 Use only the supplied DocumentIR packet and its attached page or table images.

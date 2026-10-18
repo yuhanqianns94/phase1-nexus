@@ -1,6 +1,6 @@
 {
   "version": "target_regimen_v1",
-  "name": "PMC3309850 · Terameprocol CPE (+PEG) intravenous regimen · 填写示例",
+  "name": "PMC3309850 · Terameprocol CPE (+PEG) intravenous regimen · completed example",
   "drugs": [
     {
       "drug_id": "cmp_cpe",
@@ -565,7 +565,7 @@
     "example_source": {
       "document_id": "PMC3309850",
       "scope_id": "scope_206f87d922452c0a6e74",
-      "note": "使用新合并的 CPE 来源范围；此目标示例固定伴随药已使用，剂量未知。"
+      "note": "Use the merged CPE source scope; this target example fixes the concomitant drug as present with an unknown dose."
     }
   },
   "target_dlt": 0.25,

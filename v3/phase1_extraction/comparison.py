@@ -135,11 +135,11 @@ def _reported_numeric_signature(extraction: ReportedExtraction) -> dict[str, lis
     }
     return {
         "population_age": sorted(
-            (item.age_min, item.age_min_comparator, item.age_max, item.age_max_comparator, item.age_unit)
-            for item in extraction.populations
+            [(item.age_min, item.age_min_comparator, item.age_max, item.age_max_comparator, item.age_unit)
+             for item in extraction.populations], key=repr,
         ),
         "cohort_doses": sorted(
-            (
+            [(
                 item.dose.value_kind,
                 item.dose.value,
                 item.dose.range_min,
@@ -148,7 +148,7 @@ def _reported_numeric_signature(extraction: ReportedExtraction) -> dict[str, lis
                 item.dose.unit_normalized or item.dose.unit_raw,
             )
             for item in extraction.cohorts
-            if item.actual_status == "actual"
+            if item.actual_status == "actual"], key=repr,
         ),
         "population_counts": sorted(
             [
@@ -194,7 +194,7 @@ def _reported_numeric_signature(extraction: ReportedExtraction) -> dict[str, lis
             ],
             key=repr,
         ),
-        "dlt_window_days": sorted(item.normalized_days for item in extraction.dlt_windows),
+        "dlt_window_days": sorted((item.normalized_days for item in extraction.dlt_windows), key=repr),
         "result_scope_structure": sorted(scopes.values(), key=repr),
     }
 

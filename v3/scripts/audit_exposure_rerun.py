@@ -12,10 +12,10 @@ from phase1_extraction.friendly_review import load_or_create_friendly_review, sa
 def audit(run: Path) -> dict:
     manifest = read_json(run / 'rerun_manifest.json')
     records = []
-    lines = ['# 逐队列药物配置复核', '',
-             '这是结构检查与人工复核清单；不代表所有临床事实已经人工确认。',
-             'true=明确使用；false=明确未使用；unknown=原文未确定；mixed=明确混合人群。',
-             '同一行的全部药物共享一组 DLT/N；未分层结果不拆成人工亚组。', '']
+    lines = ['# Cohort drug configuration review', '',
+             'This report provides structural checks and a manual review checklist; it does not establish that every clinical fact has been manually verified.',
+             'true=explicitly administered; false=explicitly absent; unknown=not established by the source; mixed=explicitly mixed population.',
+             'All drugs in a row share one DLT/N outcome; unstratified results are not split into artificial subgroups.', '']
     for article in manifest['articles']:
         document_id = article['document_id']
         paths = ArticlePaths(run / 'results', document_id)
@@ -47,23 +47,23 @@ def audit(run: Path) -> dict:
         save_friendly_review(paths, review, record_undo=False)
         corrections = {u.predicted_point.cohort_id: u for u in review.units
                        if u.predicted_point and u.decision == 'incorrect' and u.gold_point}
-        lines += [f'## {document_id}', '', f'实际队列：{len(actual)}；结果行：{len(rows)}；可用曲线行：{record["included_rows"]}。', '']
+        lines += [f'## {document_id}', '', f'Actual cohorts: {len(actual)}; result rows: {len(rows)}; usable curve rows: {record["included_rows"]}.', '']
         def safe(value):
             return str(value).replace('|', '\\|').replace('\n', ' ')
-        lines += ['| 队列 | 药物配置与日程 | DLT/N | 纳入曲线 |', '|---|---|---|---|']
+        lines += ['| Cohort | Drug configuration and schedule | DLT/N | Included in curve |', '|---|---|---|---|']
         for r in rows:
             config = '; '.join(exposure_text(e) + (f' [{exposure_schedule(e)}]' if exposure_schedule(e) else '') for e in r.exposures)
             corrected = corrections.get(r.cohort_id)
             point = corrected.gold_point if corrected else r
             count = f'{point.y if point.y is not None else "?"}/{point.n if point.n is not None else "?"}'
             if corrected:
-                count += f'（复核修正；原提取 {r.y}/{r.n}）'
+                count += f' (review correction; original extraction {r.y}/{r.n})'
             lines.append(f'| {safe(r.cohort_id)} | {safe(config)} | {count} | {r.included_in_default} |')
-        lines += ['', '自动检查提示：' + (', '.join(f'{k} × {v}' for k, v in record['audit_finding_codes'].items()) or '无'), '']
+        lines += ['', 'Automated findings: ' + (', '.join(f'{k} × {v}' for k, v in record['audit_finding_codes'].items()) or 'None'), '']
         for unit in corrections.values():
-            lines += [f'复核修正 {unit.predicted_point.cohort_id}：{unit.note}', '']
+            lines += [f'Review correction {unit.predicted_point.cohort_id}: {unit.note}', '']
         if errors:
-            lines += ['结构错误：' + '; '.join(errors), '']
+            lines += ['Structural errors: ' + '; '.join(errors), '']
     result = {'created_at_utc': utc_now(), 'article_count': len(records), 'articles': records,
               'structural_errors': sum(len(r['structural_errors']) for r in records),
               'note': 'Structural audit only; source interpretation remains subject to human review.'}

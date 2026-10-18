@@ -64,7 +64,8 @@ def evidence_settings(st):
 
 
 def render_evidence_controls(st, draft):
-    engine = st.selectbox('Similarity engine', ['local', 'openai'],
+    from phase1_web.hosted import is_public
+    engine = st.selectbox('Similarity engine', ['local'] if is_public() else ['local', 'openai'],
         format_func=lambda x: 'Local comparison' if x == 'local' else 'OpenAI embeddings',
         key='workflow_similarity_engine')
     model = 'text-embedding-3-small'

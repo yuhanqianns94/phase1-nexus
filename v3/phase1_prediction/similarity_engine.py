@@ -44,6 +44,9 @@ class EmbeddingVectors(dict):
 @contextmanager
 def similarity_context(engine='local', model=DEFAULT_MODEL, cache=DEFAULT_CACHE, profiles=()):
     if engine not in {'local','openai'}:raise ValueError('Unknown similarity engine.')
+    import os
+    if engine == 'openai' and os.environ.get('PHASE1_DEPLOYMENT', 'local').lower() == 'public':
+        raise ValueError('The public website uses local similarity comparison. No site-owner API is available.')
     vectors=None
     if engine=='openai':
         vectors=EmbeddingVectors(model,cache)

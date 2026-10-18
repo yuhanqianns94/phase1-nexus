@@ -37,11 +37,15 @@ def default_extraction_roots() -> list[Path]:
 
 
 def default_xml_directories() -> list[Path]:
-    return [path for path in (WORKSPACE_ROOT / "v1/output/pmc_xml_no_refs", WORKSPACE_ROOT / "output/pmc_xml_no_refs") if path.is_dir()]
+    campaigns = sorted((WORKSPACE_ROOT / "v3/output").glob("pubmed*/materials"))
+    legacy = [WORKSPACE_ROOT / relative for relative in (
+        "v3/output/pmc_xml_no_refs", "v3/output/pmc_xml", "v2/output/pmc_xml_no_refs",
+        "v1/output/pmc_xml_no_refs", "output/pmc_xml_no_refs")]
+    return [path for path in [*campaigns, *legacy] if path.is_dir()]
 
 
 def default_pdf_directories() -> list[Path]:
-    return [path for path in (WORKSPACE_ROOT / "v1/output/pmc_pdf_assets", WORKSPACE_ROOT / "output/pmc_pdf_assets") if path.is_dir()]
+    return [path for path in (WORKSPACE_ROOT / "v3/output/pmc_pdf_assets", WORKSPACE_ROOT / "v2/output/pmc_pdf_assets", WORKSPACE_ROOT / "v1/output/pmc_pdf_assets", WORKSPACE_ROOT / "output/pmc_pdf_assets") if path.is_dir()]
 
 
 def _pmcid(path: Path) -> str | None:
@@ -63,10 +67,10 @@ def build_catalog(
     xml_directories: Iterable[Path] | None = None,
     pdf_directories: Iterable[Path] | None = None,
 ) -> dict:
-    roots = list(extraction_roots or default_extraction_roots())
+    roots = list(default_extraction_roots() if extraction_roots is None else extraction_roots)
     selected, duplicates = discover_article_paths(roots)
-    xml = _file_map(xml_directories or default_xml_directories(), ".xml")
-    pdf = _file_map(pdf_directories or default_pdf_directories(), ".pdf")
+    xml = _file_map(default_xml_directories() if xml_directories is None else xml_directories, ".xml")
+    pdf = _file_map(default_pdf_directories() if pdf_directories is None else pdf_directories, ".pdf")
     document_ids = sorted(set(selected) | set(xml) | set(pdf))
     articles: list[CatalogArticle] = []
     for document_id in document_ids:

@@ -135,6 +135,14 @@ def load_batch_manifest(path: Path) -> list[dict[str, Any]]:
             if not candidate.is_absolute():
                 candidate = base / candidate
             resolved_sources.append(candidate.resolve())
+        # New acquisition manifests bind eligibility to the exact source bytes.
+        # Legacy user-authored manifests remain compatible; extraction fields do not change.
+        if item.get("screening_record"):
+            from phase1_acquisition.screening import validate_screening_gate
+            screening_path = Path(item["screening_record"])
+            if not screening_path.is_absolute():
+                screening_path = base / screening_path
+            validate_screening_gate(screening_path, resolved_sources)
         reported_input = item.get("reported_input")
         if reported_input:
             candidate = Path(str(reported_input)).expanduser()

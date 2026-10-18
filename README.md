@@ -11,8 +11,10 @@ A research toolkit for organizing Phase I oncology evidence, exploring dose-rela
 - **Explore toxicity risk** across candidate doses and regimens, with uncertainty estimates, historical evidence comparisons, and interactive curves and two-drug risk maps.
 - **Simulate BOIN dose-finding trials** and compare dose-selection rates, patient allocation, and toxicity outcomes.
 - **Save and export analyses** for further review and research.
+- **Choose a literature library**: use published processed evidence or upload personal PDF/XML articles and extract them with your own API key and selected model.
+- **Reuse compatible article posteriors** from published caches, while keeping visitor uploads, trial drafts and analyses in separate sessions.
 
-The project includes an interactive web interface and command-line tools.
+The project includes an English web interface with an email entry step and command-line tools.
 
 ## 中文介绍
 
@@ -25,8 +27,10 @@ The project includes an interactive web interface and command-line tools.
 - 比较历史证据，查看不同剂量和联合方案的毒性风险、不确定性、交互式曲线和双药风险图。
 - 开展 BOIN 剂量探索试验模拟，评估剂量选择、患者分配和毒性结局。
 - 保存和导出分析结果，供进一步复核与研究使用。
+- 选择已发布的共享证据库，或上传自己的 PDF/XML 文献，提供自己的 API key 并选择提取模型。
+- 复用兼容的文献后验缓存；不同访客的上传文件、试验草稿和分析结果分别保存。
 
-提供交互式网页界面和命令行工具。
+提供全英文交互式网页界面和命令行工具，网页入口要求填写邮箱。
 
 ## License
 

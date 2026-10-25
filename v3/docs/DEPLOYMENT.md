@@ -14,10 +14,10 @@ retention period (24 hours by default).
 
 ## Server size and concurrency
 
-The supplied `render.yaml` starts one paid service with 2 CPUs, 4 GB RAM, and a
-10 GB persistent disk. Expensive scientific calculations share one worker;
-four or five visitors can remain connected while a calculation waits for that
-worker. This is not a promise of five simultaneous model fits. Public BOIN jobs
+The supplied `render.yaml` starts one paid service with 1 CPU, 2 GB RAM, and a
+10 GB persistent disk for an initial deployment with one or two connected users.
+Expensive scientific calculations share one worker; additional calculations wait
+in the queue while visitors can continue browsing. Public BOIN jobs
 are limited to 20,000 simulated trials per design and 50,000 trials across one
 design comparison; local computation limits are unchanged.
 
@@ -29,14 +29,13 @@ two chains); the largest worker peaked at 583.5 MiB. A 100-scenario by 100-trial
 BOIN simulation also completed. Adding the separately measured session and
 largest-worker peaks gives **848.8 MiB**, before deployment headroom.
 
-**2 GB RAM / 1 CPU is the smallest trial configuration supported by this small
-benchmark; 4 GB / 2 CPUs remains the recommended starting configuration.** To try
-2 GB, change `plan: 2c-4g` to `plan: 1c-2g` before creating the Blueprint, then
-monitor memory and job latency. The 512 MB tier is not suitable. These are macOS
-arm64 / Python 3.13 measurements, not a simultaneous Linux load test or a
-capacity guarantee for the unfinished, larger owner library. The deployment uses
-Python 3.12. Re-run `v3/scripts/benchmark_hosting.py --output /tmp/hosting.json`
-with the deployment interpreter or use Render's metrics after deploying.
+**The initial configuration is 2 GB RAM / 1 CPU (`plan: 1c-2g`).** This is the
+smallest trial size supported by the small benchmark. Monitor memory and job
+latency after deploying the completed shared library. If more headroom is needed,
+change the Blueprint to `plan: 2c-4g` for 4 GB RAM / 2 CPUs. The measurements above
+come from macOS arm64 / Python 3.13; the deployment uses Linux / Python 3.12.
+Re-run `v3/scripts/benchmark_hosting.py --output /tmp/hosting.json` with the
+deployment interpreter or use Render's metrics to check actual resource use.
 
 The initial disk allocation covers the owner's shared library, its published
 caches, and small session results. It does not budget for a growing collection of
@@ -48,8 +47,8 @@ image, separately from the persistent disk.
 
 As checked on October 18, 2026, Render lists **$25/month for 1 CPU / 2 GB RAM**
 and **$85/month for 2 CPUs / 4 GB RAM**. Persistent disks cost **$0.25/GB/month**,
-so the 10 GB disk adds $2.50: approximately **$27.50/month for the trial size** or
-**$87.50/month for the recommended size**, before taxes and usage overages. A free
+so the 10 GB disk adds $2.50: approximately **$27.50/month for the configured size**
+or **$87.50/month for the optional 4 GB upgrade**, before taxes and usage overages. A free
 Hobby workspace can contain this paid compute service; a separate paid team
 workspace is not required. See the [official pricing table](https://render.com/pricing)
 and [workspace plans](https://render.com/docs/platform-features-by-plan).
@@ -66,7 +65,7 @@ this repository.
 3. Choose **New > Blueprint** and select the `phase1-toxicity-v3` repository and
    its `main` branch. Use the root-level `render.yaml`; leave the repository root
    directory empty. The service uses the root-level Dockerfile.
-4. Review the resources: one web service, 2 CPUs / 4 GB RAM, one 10 GB persistent
+4. Review the resources: one web service, 1 CPU / 2 GB RAM, one 10 GB persistent
    disk mounted at `/var/data`, and the region shown in `render.yaml`. Approve
    creation only after reviewing the displayed charges.
 5. Keep `PHASE1_DEPLOYMENT=public` and

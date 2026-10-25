@@ -3,7 +3,7 @@ services:
   - type: web
     name: phase1-toxicity-v3
     runtime: docker
-    plan: 2c-4g
+    plan: 1c-2g
     region: virginia
     branch: main
     dockerfilePath: ./Dockerfile

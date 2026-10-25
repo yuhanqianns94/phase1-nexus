@@ -59,7 +59,7 @@ def _enter(app, email="reader@example.com"):
 
 def test_public_gate_and_private_drafts_for_same_email(tmp_path, monkeypatch):
     a = _public_app(tmp_path, monkeypatch).run()
-    assert a.title[0].value == "Welcome to Phasal"
+    assert a.title[0].value == "Welcome to PHASE I NEXUS"
     a.text_input[0].set_value("invalid")
     a.button[0].click().run()
     assert a.error and not a.exception

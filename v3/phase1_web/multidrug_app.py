@@ -173,7 +173,7 @@ def _prediction_output(result, native, comparisons=None):
             st.error(str(error))
 
 def main(native):
-    st.set_page_config(page_title='Phasal V3 Bayesian', layout='wide')
+    st.set_page_config(page_title='PHASE I NEXUS', layout='wide')
     from phase1_web.hosted import public_session, is_public
     native = public_session(native, st)
     public = is_public()
@@ -193,7 +193,7 @@ def main(native):
             st.session_state.pop(key, None)
         st.session_state['multidrug_library_context'] = context
     discard_stale_dependents(st.session_state)
-    st.title('Phasal · V3 Bayesian')
+    st.title('PHASE I NEXUS')
     st.caption(f"{diagnostics['document_count']} historical articles available · Plan a trial, review evidence and explore dose–toxicity risks.")
     from phase1_web.guided_workflow import (PAGE_LABELS, initialize_draft, go_to,
         evidence_settings, sync_evidence_selection, evidence_state, render_evidence_controls)

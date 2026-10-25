@@ -1,11 +1,11 @@
 {
-  "name": "Phase I Toxicity v3",
+  "name": "PHASE I NEXUS",
   "image": "mcr.microsoft.com/devcontainers/python:1-3.12-bookworm",
   "postCreateCommand": "python -m pip install -c requirements-deploy.txt -e './v3[test]'",
   "forwardPorts": [8501],
   "portsAttributes": {
     "8501": {
-      "label": "Phase I website preview",
+      "label": "PHASE I NEXUS preview",
       "onAutoForward": "notify"
     }
   },

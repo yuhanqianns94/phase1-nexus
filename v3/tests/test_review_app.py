@@ -85,7 +85,7 @@ def test_review_page_renders_ten_clinical_modules_without_writing_on_load(tmp_pa
     app = _app(tmp_path, monkeypatch)
 
     assert not app.exception
-    assert app.title[0].value == "V3 Extraction Review"
+    assert app.title[0].value == "PHASE I NEXUS · Evidence Review"
     assert [header.value for header in app.header] == ["⬜ Disease and Study Population"]
     assert any(item.value == "Section 1 of 10" for item in app.caption)
     assert not any("Eligibility" in header.value for header in app.header)

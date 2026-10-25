@@ -818,7 +818,7 @@ def _render_review_actions(paths, review: FriendlyArticleReview, module_id: str)
 def render_review_page(output_root: Path | list[Path], *, show_title: bool = True) -> None:
     """Render the existing ten-section reviewer inside either Streamlit app."""
     if show_title:
-        st.title("V3 Extraction Review")
+        st.title("PHASE I NEXUS · Evidence Review")
         st.caption("Ten review sections: nine clinical answers and one dose-DLT table. Each page contains one major metric.")
     output_roots = [output_root] if isinstance(output_root, Path) else list(output_root)
     articles = discover_review_articles(output_roots)
@@ -885,7 +885,7 @@ def render_review_page(output_root: Path | list[Path], *, show_title: bool = Tru
 
 
 def main() -> None:
-    st.set_page_config(page_title="V3 Extraction Review", layout="wide")
+    st.set_page_config(page_title="PHASE I NEXUS · Evidence Review", layout="wide")
     st.markdown(
         """
         <style>

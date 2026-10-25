@@ -18,7 +18,7 @@ from phase1_web.reference.article_review import ARTICLE_REVIEW_PREVIEW_KEY, ARTI
 
 
 def main(native):
-    st.set_page_config(page_title="Phase I Toxicity Curve", page_icon="◈", layout="wide", initial_sidebar_state="expanded")
+    st.set_page_config(page_title="PHASE I NEXUS", page_icon="◈", layout="wide", initial_sidebar_state="expanded")
     st.markdown(f"<style>{APP_CSS}</style>", unsafe_allow_html=True)
     if not st.session_state.get(TARGET_TRIAL_DRAFT_SKIP_SAVE_KEY, False):
         try:
@@ -35,12 +35,12 @@ def main(native):
         for key in ("curve_result", "oc_result", "oc_result_signature", ARTICLE_REVIEW_PREVIEW_KEY, "v3_reference_workspace"):
             st.session_state.pop(key, None)
         st.session_state["v3_reference_context"] = context
-    st.markdown(f'''<div class="tox-hero"><p class="tox-brand">Phasal Toxicity Curve</p>
+    st.markdown(f'''<div class="tox-hero"><p class="tox-brand">PHASE I NEXUS</p>
         <p class="tox-subtitle">Explore Phase I dose–toxicity curves using a transparent, similarity-weighted historical literature model.</p>
         <div class="tox-hero-meta"><span class="tox-pill">{library.document_count} v3 extracted records</span>
         <span class="tox-pill">v3 evidence · v1 downstream methods</span><span class="tox-pill">Exploratory research use</span></div></div>''', unsafe_allow_html=True)
     with st.sidebar:
-        st.markdown('<div class="tox-sidebar-brand">◈ Phasal</div><div class="tox-sidebar-note">Phase I toxicity workspace</div>', unsafe_allow_html=True)
+        st.markdown('<div class="tox-sidebar-brand">◈ PHASE I NEXUS</div><div class="tox-sidebar-note">Phase I toxicity workspace</div>', unsafe_allow_html=True)
         st.markdown("### Workflow")
         st.session_state.setdefault("ui_page", "Library")
         for label, display in [("Library", "1  ·  Library"), ("Article comparison", "Article comparison"), ("Target Trial", "2  ·  Target trial"),

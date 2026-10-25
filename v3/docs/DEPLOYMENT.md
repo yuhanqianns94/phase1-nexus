@@ -1,4 +1,4 @@
-# Deploying the public website
+# Deploying PHASE I NEXUS
 
 The website runs one Streamlit server with isolated visitor sessions. Visitors can
 choose the shared library or upload their own literature and provide their own API
@@ -60,9 +60,9 @@ this repository.
 ## Register and deploy on Render
 
 1. Open [Render](https://dashboard.render.com/register), create an account, and
-   connect the GitHub account that owns `phase1-toxicity-v3`.
+   connect the GitHub account that owns `phase1-nexus`.
 2. Add a payment method when Render requests one for the paid compute service.
-3. Choose **New > Blueprint** and select the `phase1-toxicity-v3` repository and
+3. Choose **New > Blueprint** and select the `phase1-nexus` repository and
    its `main` branch. Use the root-level `render.yaml`; leave the repository root
    directory empty. The service uses the root-level Dockerfile.
 4. Review the resources: one web service, 1 CPU / 2 GB RAM, one 10 GB persistent

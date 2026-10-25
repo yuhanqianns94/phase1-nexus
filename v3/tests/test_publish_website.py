@@ -73,7 +73,7 @@ def checkout(tmp_path):
     git(checkout, "init", "-b", "main")
     git(checkout, "config", "user.email", "test@example.invalid")
     git(checkout, "config", "user.name", "Publication Test")
-    git(checkout, "remote", "add", "origin", "https://github.com/yuhanqianns94/phase1-toxicity-v3.git")
+    git(checkout, "remote", "add", "origin", "https://github.com/yuhanqianns94/phase1-nexus.git")
     write(checkout, "README.md", "Public features only\n")
     write(checkout, "v3/README.md", "Public v3 features only\n")
     write(checkout, "v3/phase1_web/app.py", "old\n")
@@ -115,9 +115,9 @@ def test_push_requires_full_scanner_before_changing_checkout(source, checkout, m
 
 def test_credential_bearing_remote_is_rejected_without_echoing_secret(source, checkout):
     token = "private-credential-must-not-appear"
-    git(checkout, "remote", "set-url", "origin", f"https://{token}@github.com/yuhanqianns94/phase1-toxicity-v3.git")
+    git(checkout, "remote", "set-url", "origin", f"https://{token}@github.com/yuhanqianns94/phase1-nexus.git")
     with pytest.raises(publisher.PublicationError) as error:
-        publisher.validate_checkout(checkout, source, "yuhanqianns94/phase1-toxicity-v3")
+        publisher.validate_checkout(checkout, source, "yuhanqianns94/phase1-nexus")
     assert token not in str(error.value)
 
 

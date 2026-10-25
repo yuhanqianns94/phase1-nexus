@@ -1,7 +1,7 @@
 # Creates a paid service only after you approve it in the Render dashboard.
 services:
   - type: web
-    name: phase1-toxicity-v3
+    name: phase1-nexus
     runtime: docker
     plan: 1c-2g
     region: virginia

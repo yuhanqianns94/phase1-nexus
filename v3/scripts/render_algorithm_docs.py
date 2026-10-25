@@ -21,8 +21,8 @@ def main():
         header = Path(temporary) / 'style.html'
         header.write_text('<style>\n' + css + '\n</style>')
         for suffix, language, title in (
-            ('', 'en', 'V3 algorithms and mathematical explanation'),
-            ('_ZH', 'en', 'V3 algorithms and mathematical explanation'),
+            ('', 'en', 'PHASE I NEXUS algorithms and mathematical explanation'),
+            ('_ZH', 'en', 'PHASE I NEXUS algorithms and mathematical explanation'),
         ):
             source = docs / ('V3_ALGORITHMS_AND_MATHEMATICAL_SPECIFICATION' + suffix + '.md')
             destination = source.with_suffix('.html')

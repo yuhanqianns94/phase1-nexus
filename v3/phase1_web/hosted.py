@@ -87,7 +87,7 @@ def public_session(native, st):
         return native
     validate_public_environment()
     if not st.session_state.get("public_email"):
-        st.title("Welcome to Phasal")
+        st.title("Welcome to PHASE I NEXUS")
         st.write("Explore Phase I evidence and dose–toxicity risks.")
         with st.form("public_welcome"):
             email = st.text_input("Email address", placeholder="you@example.com", max_chars=254).strip()

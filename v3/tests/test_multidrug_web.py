@@ -9,7 +9,7 @@ def test_native_workspace_and_target_editor(tmp_path,monkeypatch):
     monkeypatch.setenv('PHASE1_V3_STATE_ROOT',str(tmp_path/'state'))
     app=AppTest.from_file(Path(__file__).parents[1]/'phase1_web/app.py',default_timeout=30).run()
     assert not app.exception
-    assert app.title[0].value=='Phasal · V3 Bayesian'
+    assert app.title[0].value=='PHASE I NEXUS'
     app.sidebar.radio[0].set_value('Target Trial').run()
     assert not app.exception and not app.error
     assert app.button(key='plan_add_drug')

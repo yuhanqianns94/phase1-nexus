@@ -12,7 +12,8 @@ def test_native_workspace_and_target_editor(tmp_path,monkeypatch):
     assert app.title[0].value=='PHASE I NEXUS'
     app.sidebar.radio[0].set_value('Target Trial').run()
     assert not app.exception and not app.error
-    assert app.button(key='plan_add_drug')
+    assert app.text_input(key='plan_first_drug_name')
+    assert not any(button.key == 'plan_add_drug' for button in app.button)
     assert not any(x.label=='Probability model' for x in app.selectbox)
     from test_multidrug_ui_state_audit import seed_test_plan
     seed_test_plan(app,tmp_path)

@@ -30,7 +30,7 @@ def test_question_first_allows_a_range_with_b_fixed_30_and_keeps_plan():
     draft = draft_for()
     app = app_for(draft)
     assert app.radio[0].key == 'explore_goal'
-    assert app.radio(key='explore_goal').value == 'Vary one drug with fixed companions'
+    assert app.radio(key='explore_goal').value == 'Explore a dose range'
     assert app.number_input(key='explore_B_actual_fixed').value == 30.
     app.number_input(key='explore_A_actual_lo').set_value(10.).run()
     app.number_input(key='explore_A_actual_hi').set_value(40.).run()
@@ -48,9 +48,9 @@ def test_relative_actual_and_planned_views_preserve_separate_edits():
     app.radio(key='explore_mode').set_value('Relative-dose exploration').run()
     app.number_input(key='explore_A_lo').set_value(.4).run()
     app.number_input(key='explore_B_fixed').set_value(1.5).run()
-    app.radio(key='explore_goal').set_value('Compare planned regimens').run()
+    app.radio(key='explore_goal').set_value('Compare candidate doses').run()
     assert app.session_state['result']['points'][0]['doses'] == {'A': 25., 'B': 30.}
-    app.radio(key='explore_goal').set_value('Vary one drug with fixed companions').run()
+    app.radio(key='explore_goal').set_value('Explore a dose range').run()
     assert app.number_input(key='explore_A_lo').value == .4
     assert app.number_input(key='explore_B_fixed').value == 1.5
     app.radio(key='explore_mode').set_value('Actual-dose exploration').run()
@@ -79,7 +79,7 @@ def test_planned_regimens_reject_varying_companion_doses():
     draft = draft_for(2)
     draft['points'][1]['doses']['B'] = 60.
     app = app_for(draft)
-    app.radio(key='explore_goal').set_value('Compare planned regimens').run()
+    app.radio(key='explore_goal').set_value('Compare candidate doses').run()
     assert app.session_state['result'] is None
     assert any('Only the focal drug may vary' in item.value for item in app.info)
     assert not app.exception

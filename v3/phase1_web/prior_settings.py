@@ -107,9 +107,11 @@ def _select(st, label, catalog, namespace, saved, default):
         key=namespace + 'preset')
 
 
-def _custom_risk(st, backend, namespace, seed, drug_count=2, drug_modes=None, combination=None):
+def _custom_risk(st, backend, namespace, seed, drug_count=2, drug_modes=None, combination=None, combination_prior_level=None):
     values = PriorSpec.model_validate(seed).model_dump()
     for field in active_prior_fields(backend):
+        if field == 'combination_sd' and combination_prior_level is not None:
+            continue
         if (field == 'triple_sd' or (field == 'pair_sd' and drug_count == 1) or
                 (field.startswith('log_slope') and drug_modes and 'numeric' not in drug_modes)):
             continue
@@ -177,7 +179,7 @@ def render_prior_formulas(st, prior, backend='logistic', drug_count=1, drug_mode
     st.caption(r'$\mathcal N(\mu,\sigma^2)$ denotes a Normal distribution with mean $\mu$ and variance $\sigma^2$.')
 
 
-def render_prior_settings(st, backend, synthesis, state_root, drug_count=1, drug_modes=None, *, combination=None):
+def render_prior_settings(st, backend, synthesis, state_root, drug_count=1, drug_modes=None, *, combination=None, combination_prior_level=None):
     """Return exact prior settings; render the active mathematical distributions."""
     path = Path(state_root) / 'bayesian_prior_preferences.json'
     preferences = _read_preferences(path, st)
@@ -202,8 +204,9 @@ def render_prior_settings(st, backend, synthesis, state_root, drug_count=1, drug
             spec = risk_prior_preset(name, backend)
             numeric = not drug_modes or 'numeric' in drug_modes
             if backend == 'single_drug_logistic':
-                symbols = r'\sigma_\alpha,\sigma_\ell' + (r',\sigma_\delta' if combination is not False else '')
-                values = f'{spec.intercept_sd:g},{spec.log_slope_sd:g}' + (f',{spec.combination_sd:g}' if combination is not False else '')
+                include_combination = combination is not False and combination_prior_level is None
+                symbols = r'\sigma_\alpha,\sigma_\ell' + (r',\sigma_\delta' if include_combination else '')
+                values = f'{spec.intercept_sd:g},{spec.log_slope_sd:g}' + (f',{spec.combination_sd:g}' if include_combination else '')
             else:
                 symbols = r'\sigma_a' + (r',\sigma_\ell' if numeric else '') + (r',\sigma_\eta' if drug_count > 1 else '')
                 values = f'{spec.intercept_sd:g}' + (f',{spec.log_slope_sd:g}' if numeric else '') + (f',{spec.pair_sd:g}' if drug_count > 1 else '')
@@ -214,12 +217,18 @@ def render_prior_settings(st, backend, synthesis, state_root, drug_count=1, drug
             format_func=formula_label, key=risk_namespace + 'preset', horizontal=True)
         if choice == 'custom':
             seed = stored.get('custom_risk') or st.session_state.get(risk_namespace + 'last_values') or PriorSpec().model_dump()
-            prior = _custom_risk(st, backend, risk_namespace, seed, drug_count, drug_modes, combination)
+            prior = _custom_risk(st, backend, risk_namespace, seed, drug_count, drug_modes, combination, combination_prior_level)
             stored['custom_risk'] = prior.model_dump()
             label = 'Custom risk prior'
         else:
             prior = risk_prior_preset(choice, backend)
             label = RISK_PRESETS[choice]['label']
+        if backend == 'single_drug_logistic' and combination_prior_level is not None:
+            from phase1_prediction.multidrug.single_drug import COMBINATION_PRIOR_SCALES
+            if combination_prior_level not in COMBINATION_PRIOR_SCALES:
+                raise ValueError('Choose Low, Medium or High for the combination toxicity prior.')
+            prior = canonical_prior({**prior.model_dump(), 'combination_sd': COMBINATION_PRIOR_SCALES[combination_prior_level]}, backend)
+            st.caption('Combination toxicity prior: ' + combination_prior_level.title() + ' · selected in Trial plan')
         stored['risk_choice'] = choice
         st.session_state[risk_namespace + 'last_values'] = prior.model_dump()
         render_prior_formulas(st, prior, backend, drug_count, drug_modes, combination=combination)

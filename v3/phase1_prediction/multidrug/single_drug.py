@@ -13,6 +13,7 @@ from .contracts import DrugSlot, Exposure, ModelScope, RegimenPoint, TargetDrug,
 
 CONTEXT_ID = '__combination_context__'
 PROJECTION_VERSION = 'focal_context_projection_v1'
+COMBINATION_PRIOR_SCALES = {'low': .25, 'medium': .5, 'high': 1.}
 
 
 def _context_profile():
@@ -65,6 +66,13 @@ def project_target(target, focal_target_id=None):
     if any(point.doses[chosen] is None for point in target.points):
         raise ValueError('Every focal point needs a numeric dose; use zero for explicit absence.')
     context_present = any(value is None or value > 0 for value in companion_coordinates[0].values())
+    analysis = target.profile.get('single_drug_analysis', {})
+    if 'combination_present' in analysis:
+        if companions:
+            raise ValueError('Use one focal drug with the combination-treatment setting; do not also enter companion drugs.')
+        if not isinstance(analysis['combination_present'], bool):
+            raise ValueError('Choose whether the target includes combination treatment.')
+        context_present = analysis['combination_present']
     focal.research_priority = 1
     context = TargetDrug(drug_id=CONTEXT_ID, name='Combination treatment context', research_priority=2,
                          research_role='background', mode='background', profile=_context_profile())

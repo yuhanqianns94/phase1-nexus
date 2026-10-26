@@ -83,7 +83,7 @@ def test_clinical_preview_does_not_require_or_create_doses(tmp_path):
 def test_blank_plan_survives_navigation(tmp_path,monkeypatch):
     app=app_for(tmp_path,monkeypatch)
     app.text_area(key='plan_pop_disease').set_value('Advanced solid tumors').run()
-    app.button(key='plan_add_drug').click().run()
+    app.text_input(key='plan_first_drug_name').set_value('Investigational X').run()
     draft=json.loads(app.session_state['multidrug_target_text'])
     did=draft['drugs'][0]['drug_id']
     app.text_input(key='plan_'+did+'_name').set_value('Investigational X').run()
@@ -99,7 +99,7 @@ def test_blank_plan_survives_navigation(tmp_path,monkeypatch):
 
 def test_new_trial_structured_entry_and_reference_freezing(tmp_path,monkeypatch):
     app=app_for(tmp_path,monkeypatch)
-    app.button(key='plan_add_drug').click().run()
+    app.text_input(key='plan_first_drug_name').set_value('Investigational X').run()
     did=json.loads(app.session_state['multidrug_target_text'])['drugs'][0]['drug_id']
     app.text_input(key='plan_'+did+'_name').set_value('Investigational X').run()
     app.selectbox(key='plan_'+did+'_unit').set_value('mg').run()
@@ -115,7 +115,7 @@ def test_new_trial_structured_entry_and_reference_freezing(tmp_path,monkeypatch)
     assert after['points'][0]['doses'][did]==100
     assert not any(b.label=='Generate prediction' for b in app.button)
     app.sidebar.radio[0].set_value('Prediction Results').run()
-    app.radio(key='explore_goal').set_value('Compare planned regimens').run()
+    app.radio(key='explore_goal').set_value('Compare candidate doses').run()
     assert any(b.label=='Generate prediction' for b in app.button)
 
 

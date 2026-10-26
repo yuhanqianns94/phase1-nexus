@@ -139,6 +139,8 @@ def validate_logic(groups, clause_ids):
 
 def planned_issues(draft, *, require_doses=True):
     issues=[]
+    if draft.get('profile', {}).get('single_drug_analysis', {}).get('combination_present', False) is None:
+        issues.append('Choose whether the target drug will be used in combination.')
     pop=draft.get('profile',{}).get('population',{})
     if pop.get('age_min') is not None and pop.get('age_max') is not None and pop['age_min']>pop['age_max']:
         issues.append('Minimum age must not exceed maximum age.')

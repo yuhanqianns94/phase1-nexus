@@ -76,7 +76,7 @@ def probability_model_controls(st, drugs=None, focal_drug_id=None, *, combinatio
     return 'single_drug_logistic', 'Focal drug with combination background'
 
 
-def _validate_draft_shape(draft):
+def _validate_draft_shape(draft, *, single_drug_only=False):
     """Check editable JSON containers without requiring optional target doses."""
     if not isinstance(draft,dict):
         raise ValueError('The target JSON must be an object.')
@@ -90,6 +90,17 @@ def _validate_draft_shape(draft):
     for point in draft.get('points',[]):
         if not isinstance(point.get('doses',{}),dict):
             raise ValueError('Candidate regimen doses must be an object.')
+    if single_drug_only and len(draft.get('drugs', [])) > 1:
+        raise ValueError('Enter only one target drug. Use the combination-treatment setting for other treatment.')
+    if single_drug_only:
+        from phase1_prediction.multidrug.single_drug import COMBINATION_PRIOR_SCALES
+        analysis = draft.get('profile', {}).get('single_drug_analysis', {})
+        if not isinstance(analysis, dict):
+            raise ValueError('The single-drug settings must be an object.')
+        if analysis.get('combination_present') is not None and not isinstance(analysis['combination_present'], bool):
+            raise ValueError('Combination treatment must be true or false.')
+        if analysis.get('combination_prior_level', 'medium') not in COMBINATION_PRIOR_SCALES:
+            raise ValueError('Choose Low, Medium or High for the combination toxicity prior.')
 
 
 def _result(result, native):
@@ -162,6 +173,8 @@ def main(native):
         evidence_settings, sync_evidence_selection, evidence_state, render_evidence_controls,
         enforce_automatic_correspondence)
     initialize_draft(st, native.STATE_ROOT)
+    from phase1_web.single_drug_plan import migrate_saved_plan, single_drug_plan
+    migrate_saved_plan(st, native.STATE_ROOT)
     enforce_automatic_correspondence(st, native.STATE_ROOT)
     pending=st.session_state.pop('workflow_next_page',None)
     if pending in PAGE_LABELS:
@@ -218,7 +231,7 @@ def main(native):
                 help='Load the extracted terameprocol trial from PMC3309850.' if example_scope else
                      'The fixed example (PMC3309850) is not available in this library. Use the Shared research library.'):
             try:
-                replacement = target_from_scope(example_scope).model_dump(mode='json')
+                replacement = single_drug_plan(target_from_scope(example_scope).model_dump(mode='json'))
                 replacement['name'] = 'Example trial · PMC3309850 · terameprocol'
             except ValueError as error:
                 st.error(str(error))
@@ -264,9 +277,9 @@ def main(native):
                 text = st.text_area('Protocol and drug attributes (JSON)', key='multidrug_target_json_editor', height=420)
                 draft=json.loads(text)
             else:
-                draft=render_draft(json.loads(st.session_state['multidrug_form_base']))
+                draft=render_draft(json.loads(st.session_state['multidrug_form_base']), single_drug_only=True)
                 text=json.dumps(draft,ensure_ascii=False,indent=2)
-            _validate_draft_shape(draft)
+            _validate_draft_shape(draft, single_drug_only=True)
             if draft.get('mapping_overrides'):
                 enforce_automatic_correspondence(st, native.STATE_ROOT, draft)
                 text=json.dumps(draft,ensure_ascii=False,indent=2)
@@ -399,7 +412,8 @@ def main(native):
             focal_id = (target.profile.get('single_drug_analysis', {}).get('focal_drug_id') if target is not None
                         else (st.session_state.get('explore_axes') or [None])[0])
             from phase1_web.model_formulas import render_aggregation, target_combination
-            combination = target_combination(target) if target is not None else (False if len(model_drugs) == 1 else None)
+            combination = (target_combination(target) if target is not None else
+                           draft.get('profile', {}).get('single_drug_analysis', {}).get('combination_present', False if len(model_drugs) == 1 else None))
             backend, construction = probability_model_controls(st, model_drugs, focal_id, combination=combination)
             synthesis = render_aggregation(st, combination=combination)
             from phase1_web.prior_settings import render_prior_settings
@@ -407,7 +421,8 @@ def main(native):
                 selected_prior, power_settings, _prior_choice = render_prior_settings(
                     st, backend, synthesis, native.STATE_ROOT, drug_count=len(model_drugs),
                     drug_modes=[getattr(d, 'mode', None) or d.get('mode', 'numeric') for d in model_drugs],
-                    combination=combination)
+                    combination=combination,
+                    combination_prior_level=draft.get('profile', {}).get('single_drug_analysis', {}).get('combination_prior_level', 'medium') if combination else None)
             except (ValueError, OSError) as error:
                 invalidate_prediction(st.session_state)
                 st.error('Check the prior settings: ' + str(error))

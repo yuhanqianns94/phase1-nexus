@@ -101,7 +101,10 @@ def coordinate_editor(st, draft, *, key='explore'):
     """
     drugs = draft.get('drugs', [])
     if not drugs:
-        st.info('Add drugs to your trial plan before exploring risk.')
+        st.info('Add a target drug to your trial plan before exploring risk.')
+        return None
+    if draft.get('profile', {}).get('single_drug_analysis', {}).get('combination_present', False) is None:
+        st.info('Choose whether the drug will be used in combination in your trial plan.')
         return None
     saved_keys = [key + suffix for suffix in ('_goal', '_mode', '_axes')]
     saved_keys += [key + '_' + d['drug_id'] + '_' + suffix for d in drugs
@@ -117,11 +120,21 @@ def coordinate_editor(st, draft, *, key='explore'):
     unknown_ids = {d['drug_id'] for d in drugs if d.get('mode') == 'background'
                    and _companion_state(d, draft) in {'Used, dose unknown', 'Not used', None}}
     axis_ids = [did for did in names if did not in unknown_ids]
-    goals = ['Vary one drug'] if len(drugs) == 1 else ['Vary one drug with fixed companions']
-    goals.append('Compare planned regimens')
+    goals = ['Explore a dose range', 'Compare candidate doses']
+    legacy_goals = {'Vary one drug': goals[0], 'Vary one drug with fixed companions': goals[0],
+                    'Compare planned regimens': goals[1]}
+    if st.session_state.get(key + '_goal') in legacy_goals:
+        st.session_state[key + '_goal'] = legacy_goals[st.session_state[key + '_goal']]
     if st.session_state.get(key + '_goal') not in goals:
         st.session_state[key + '_goal'] = goals[0]
     goal = st.radio('What would you like to explore?', goals, key=key + '_goal')
+    context_note = st.empty()
+
+    def describe_context(target):
+        from phase1_web.model_formulas import target_combination
+        if target_combination(target):
+            context_note.caption('Combination treatment is included as a fixed background. Only the target drug dose varies.')
+        return target
     if not axis_ids:
         st.info('Choose a focal drug with a numerical dose axis in the trial plan.')
         return None
@@ -132,21 +145,25 @@ def coordinate_editor(st, draft, *, key='explore'):
         valid_axes = [saved_focal] if saved_focal in axis_ids else axis_ids[:1]
     if key + '_axes' not in st.session_state or previous_axes != valid_axes:
         st.session_state[key + '_axes'] = valid_axes
-    axes = st.multiselect('Focal drug', axis_ids, format_func=lambda did: names[did],
-                          max_selections=1, key=key + '_axes')
+    if len(drugs) == 1:
+        axes = axis_ids[:1]
+        st.caption('Target drug: ' + names[axes[0]])
+    else:
+        axes = st.multiselect('Focal drug', axis_ids, format_func=lambda did: names[did],
+                              max_selections=1, key=key + '_axes')
     if len(axes) != 1:
         st.info('Choose exactly one focal drug. Other drugs remain fixed background.')
         return None
-    if goal == 'Compare planned regimens':
+    if goal == 'Compare candidate doses':
         if not draft.get('points'):
-            st.info('Add candidate regimens to your trial plan, or choose a curve to explore before doses are decided.')
+            st.info('Add candidate doses to your trial plan, or choose Explore a dose range.')
             return None
         data=copy.deepcopy(draft)
         dose_mapping_controls(st,data,key=key,references=True)
         try:
-            return _focal_target(data, axes[0])
+            return describe_context(_focal_target(data, axes[0]))
         except ValueError as error:
-            st.info('Check the planned regimens: ' + str(error))
+            st.info('Check the candidate doses: ' + str(error))
             return None
 
     modes = ['Relative-dose exploration', 'Actual-dose exploration']
@@ -161,7 +178,7 @@ def coordinate_editor(st, draft, *, key='explore'):
     if relative:
         st.caption('Compare lower and higher relative doses before choosing mg or other units. A value of 1 is the model reference, not a recommended dose. Actual doses can be entered later for BOIN.')
     else:
-        st.caption('Enter the dose range to examine and the fixed dose of each companion. These are exploration settings; the saved trial plan stays unchanged.')
+        st.caption('Enter the dose range to examine. These are exploration settings; the saved trial plan stays unchanged.')
     axis_count = 1
 
     data = copy.deepcopy(draft)
@@ -242,7 +259,7 @@ def coordinate_editor(st, draft, *, key='explore'):
         return None
     try:
         explored = exploration_target(data, coordinates, axes, relative=relative)
-        return _focal_target(explored.model_dump(), axes[0])
+        return describe_context(_focal_target(explored.model_dump(), axes[0]))
     except ValueError as error:
         st.info(str(error))
         return None
@@ -309,7 +326,7 @@ def boin_candidate_editor(st,result,*,rebase=False):
             horizontal=True,key=prefix+'_source')=='Use evaluated actual-dose regimens'
         if reuse:
             st.caption(f"Use the {len(data['points'])} evaluated doses, or edit the rows below to change your candidate doses.")
-    st.caption('Enter one candidate dose per row. Dose-level IDs are generated automatically; BOIN follows increasing focal-drug doses. Keep any companion treatment fixed.')
+    st.caption('Enter one candidate dose per row. Dose-level IDs are generated automatically; BOIN follows increasing target-drug doses.')
     rows=[dict(p['doses'],Regimen=p['level_id']) for p in data['points']] if reuse else []
     numeric=[d for d in data['drugs'] if d['mode']=='numeric']
     edit_units=relative

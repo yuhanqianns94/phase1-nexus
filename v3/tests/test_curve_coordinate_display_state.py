@@ -40,8 +40,8 @@ def test_relative_and_actual_coordinates_keep_separate_values():
     assert app.number_input(key='explore_A_hi').value==3.
     assert app.number_input(key='explore_B_fixed').value==2.
     assert app.session_state['result']['points'][0]['doses']=={'A':.5,'B':2.}
-    app.radio(key='explore_goal').set_value('Compare planned regimens').run()
-    app.radio(key='explore_goal').set_value('Vary one drug with fixed companions').run()
+    app.radio(key='explore_goal').set_value('Compare candidate doses').run()
+    app.radio(key='explore_goal').set_value('Explore a dose range').run()
     app.radio(key='explore_mode').set_value('Actual-dose exploration').run()
     assert app.number_input(key='explore_A_actual_lo').value==30.
     assert app.number_input(key='explore_A_actual_hi').value==150.

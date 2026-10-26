@@ -198,7 +198,7 @@ def test_old_target_predictions_cannot_seed_new_simulations():
         path_matrix(method)
 
 
-def test_web_new_drug_ids_stay_attached_after_deleting_a_different_row(tmp_path,monkeypatch):
+def test_replacing_the_single_target_does_not_reuse_old_drug_doses(tmp_path,monkeypatch):
     from test_prediction_pipeline import _article
     _article(tmp_path,'PMC123',rows=[(.1,3,0),(.3,6,2)])
     monkeypatch.setenv('PHASE1_V3_EXTRACTION_ROOTS',str(tmp_path))
@@ -207,17 +207,14 @@ def test_web_new_drug_ids_stay_attached_after_deleting_a_different_row(tmp_path,
     app.session_state['multidrug_target_text']=json.dumps(detailed_target())
     app.run()
     app.sidebar.radio[0].set_value('Target Trial').run()
-    original=json.loads(app.session_state['multidrug_target_text'])
-    app.button(key='plan_add_drug').click().run()
-    first=json.loads(app.session_state['multidrug_target_text'])['drugs'][-1]['drug_id']
-    app.text_input(key='plan_'+first+'_name').set_value('Partner one').run()
-    app.button(key='plan_add_drug').click().run()
+    app.button(key='plan_D_remove').click().run()
+    app.text_input(key='plan_first_drug_name').set_value('New target').run()
     second=json.loads(app.session_state['multidrug_target_text'])['drugs'][-1]['drug_id']
-    app.text_input(key='plan_'+second+'_name').set_value('Partner two').run()
     app.text_area(key='plan_'+second+'_schedule').set_value('every 21 days').run()
-    app.button(key='plan_'+first+'_remove').click().run()
+    app.sidebar.radio[0].set_value('Library').run()
+    app.sidebar.radio[0].set_value('Target Trial').run()
     assert not app.error and not app.exception
     after=json.loads(app.session_state['multidrug_target_text'])
-    assert [d['drug_id'] for d in after['drugs']]==['D',second]
-    assert after['drugs'][1]['profile']['schedule']=='every 21 days'
-    assert [p['doses']['D'] for p in after['points']]==[p['doses']['D'] for p in original['points']]
+    assert [d['drug_id'] for d in after['drugs']]==[second]
+    assert after['drugs'][0]['profile']['schedule']=='every 21 days'
+    assert all('D' not in p['doses'] and p['doses'].get(second) is None for p in after['points'])

@@ -71,8 +71,13 @@ def test_power_prior_preserves_split_contexts_and_does_not_duplicate_patients():
 
 
 @pytest.mark.parametrize('mode', MODES)
-def test_service_routes_restore_full_plan_and_frozen_redraw(tmp_path,monkeypatch,mode):
+@pytest.mark.parametrize('explicit_context', [False, True])
+def test_service_routes_restore_full_plan_and_frozen_redraw(tmp_path,monkeypatch,mode,explicit_context):
     scored,target=example()
+    if explicit_context:
+        from phase1_web.single_drug_plan import single_drug_plan
+        from phase1_prediction.multidrug.contracts import TargetRegimen
+        target = TargetRegimen.model_validate(single_drug_plan(target.model_dump(mode='json')))
     monkeypatch.setattr(service,'_select',lambda *a,**kw:(scored,{'notices':[]}))
     def fit(scopes,**kw):
         store=PosteriorStore(kw['store_root']);entries=[]
@@ -87,7 +92,7 @@ def test_service_routes_restore_full_plan_and_frozen_redraw(tmp_path,monkeypatch
     method=result.methods[mode]
     assert method['status']=='fitted'
     assert method['target']==target.model_dump(mode='json')
-    assert set(method['summary'][0]['doses'])=={'A','B'}
+    assert set(method['summary'][0]['doses'])==({'A'} if explicit_context else {'A','B'})
     assert method['evidence_construction']=='single_drug_conditional_regimen'
     np.testing.assert_allclose(method['posterior_draws'],np.broadcast_to(expit(-2+np.array([.5,1,2])+.4),(12,3)))
     revised=target.model_copy(deep=True)
@@ -97,7 +102,10 @@ def test_service_routes_restore_full_plan_and_frozen_redraw(tmp_path,monkeypatch
     assert redrawn_method['target']==revised.model_dump(mode='json')
     assert redrawn_method['provenance']==method['provenance']
     np.testing.assert_allclose(np.array(redrawn_method['posterior_draws'])[:,0],expit(-2+.25+.4))
-    revised.points[0].doses['B']=0.
+    if explicit_context:
+        revised.profile['single_drug_analysis']['combination_present'] = False
+    else:
+        revised.points[0].doses['B']=0.
     with pytest.raises(ValueError,match='context changed'):
         service.evaluate_frozen_prediction(asdict(result),revised)
 

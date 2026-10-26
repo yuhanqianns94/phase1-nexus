@@ -689,7 +689,7 @@ def _summary_dose(point, drug, state):
             'Do not use': 'Not used', 'Undecided': 'Use not decided'}.get(state, state)
 
 
-def render_draft(initial):
+def render_draft(initial, *, single_drug_only=False):
     # Conditional controls must retain in-progress values while hidden. Streamlit
     # otherwise removes their widget state at the end of the rerun; the stable
     # form base would then restore the earlier value when they are shown again.
@@ -699,16 +699,21 @@ def render_draft(initial):
         if key in st.session_state:
             st.session_state[key]=st.session_state[key]
     draft=copy.deepcopy(initial)
+    if single_drug_only:
+        from phase1_web.single_drug_plan import single_drug_plan, combination_settings
+        draft = single_drug_plan(draft)
     profile=draft.setdefault('profile',{})
     planning=profile.setdefault('planning',{'version':PROTOCOL_VERSION})
     actions=[]
     pages=show_steps()
     with pages[0]:
-        st.markdown('### Which drugs will be studied?')
-        st.caption('Enter each planned drug or drug class. Doses can stay undecided while you review evidence and explore risks.')
+        st.markdown('### Which drug will be studied?' if single_drug_only else '### Which drugs will be studied?')
+        st.caption('Enter one target drug. Doses can stay undecided while you review evidence and explore risks.' if single_drug_only
+                   else 'Enter each planned drug or drug class. Doses can stay undecided while you review evidence and explore risks.')
         if not draft.get('drugs'):
             first_name=st.text_input('Drug name or development code','',key=_input_key('first_drug_name'),placeholder='Type a drug name, then press Enter')
             if first_name.strip():actions.append(('first_drug',first_name.strip()))
+            if single_drug_only:combination_settings(st, profile['single_drug_analysis'])
         for i,drug in enumerate(draft.get('drugs',[])):
             did=drug['drug_id'];p=drug.setdefault('profile',{})
             with st.container(border=True):
@@ -721,6 +726,7 @@ def render_draft(initial):
                     if unit_changed:
                         drug['unit']=unit
                         p['dose_unit_code']=unit_code
+                if single_drug_only:combination_settings(st, profile['single_drug_analysis'])
                 with st.container():
                     st.markdown('**Drug identity and matching details (optional)**')
                     kinds={'drug':'Named drug','drug_class':'Drug class','non_drug':'Non-drug intervention','unclear':'Undecided'}
@@ -734,12 +740,15 @@ def render_draft(initial):
                         if v!=old:p[field]=v
                     text_field('Product / formulation',p,'formulation',did+'_formulation')
                 with st.container():
-                    st.caption('Order also sets research priority for analyses that use a limited number of interacting drugs.')
-                    a,b,c=st.columns(3)
-                    if a.button('Move up',key='plan_'+did+'_up',disabled=i==0):actions.append(('up',did))
-                    if b.button('Move down',key='plan_'+did+'_down',disabled=i==len(draft['drugs'])-1):actions.append(('down',did))
-                    if c.button('Remove drug',key='plan_'+did+'_remove'):actions.append(('remove_drug',did))
-        if st.button('Add drug',key='plan_add_drug'):actions.append(('add_drug',None))
+                    if single_drug_only:
+                        if st.button('Remove drug',key='plan_'+did+'_remove'):actions.append(('remove_drug',did))
+                    else:
+                        st.caption('Place the main study drug first. Choose the drug whose dose varies in Explore risks.')
+                        a,b,c=st.columns(3)
+                        if a.button('Move up',key='plan_'+did+'_up',disabled=i==0):actions.append(('up',did))
+                        if b.button('Move down',key='plan_'+did+'_down',disabled=i==len(draft['drugs'])-1):actions.append(('down',did))
+                        if c.button('Remove drug',key='plan_'+did+'_remove'):actions.append(('remove_drug',did))
+        if not single_drug_only and st.button('Add drug',key='plan_add_drug'):actions.append(('add_drug',None))
     with pages[1]:
         st.markdown('### How will each drug be given?')
         st.caption('Add one schedule per treatment stage. All fields are optional; no schedule is assumed.')
@@ -936,6 +945,11 @@ def render_draft(initial):
                     states[lid]={d['drug_id']:'Not entered' for d in draft['drugs']}
                 draft.setdefault('points',[]).append(point)
     for i,d in enumerate(draft.get('drugs',[])):d['research_priority']=i+1
+    if single_drug_only:
+        if draft.get('drugs'):
+            profile['single_drug_analysis']['focal_drug_id'] = draft['drugs'][0]['drug_id']
+        else:
+            profile['single_drug_analysis'].pop('focal_drug_id', None)
     if draft.get('name') in (None,'','New trial') or planning.get('automatic_name'):
         trial_names=[d['name'] for d in draft.get('drugs',[]) if d.get('name')]
         draft['name']=' + '.join(trial_names)+' trial' if trial_names else 'New trial'
@@ -952,6 +966,11 @@ def render_draft(initial):
     with pages[5]:
         st.markdown('### Trial plan summary')
         st.write(f"**{draft['name']}**")
+        if single_drug_only:
+            present = profile['single_drug_analysis'].get('combination_present')
+            st.write('Combination treatment: ' + ('Yes' if present else 'No' if present is False else 'Not specified'))
+            if present:
+                st.write('Combination toxicity prior: ' + profile['single_drug_analysis']['combination_prior_level'].title())
         population=profile.get('population',{})
         st.write('Disease: '+('; '.join(population.get('disease',[])) or 'Not specified'))
         for drug in draft.get('drugs',[]):

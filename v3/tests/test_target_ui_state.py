@@ -47,7 +47,7 @@ def test_conditional_assessment_and_dose_inputs_retain_edits(tmp_path, monkeypat
 def test_rule_rebase_preserves_explorer_but_new_trial_resets_it(tmp_path, monkeypatch):
     app = _target_app(tmp_path, monkeypatch)
     app.sidebar.radio[0].set_value('Prediction Results').run()
-    app.radio(key='explore_goal').set_value('Vary one drug').run()
+    app.radio(key='explore_goal').set_value('Explore a dose range').run()
     app.radio(key='explore_mode').set_value('Relative-dose exploration').run()
     app.number_input(key='explore_D_lo').set_value(.7).run()
     app.sidebar.radio[0].set_value('Target Trial').run()
@@ -63,24 +63,22 @@ def test_rule_rebase_preserves_explorer_but_new_trial_resets_it(tmp_path, monkey
 
 
 @pytest.mark.parametrize('axes', [['A', 'B'], ['B']])
-def test_removing_selected_drug_reconciles_explorer_axes(tmp_path, monkeypatch, axes):
+def test_legacy_axes_resolve_to_the_single_target_and_survive_navigation(tmp_path, monkeypatch, axes):
     *_, target = fixture()
     app = _target_app(tmp_path, monkeypatch, target.model_dump())
     app.sidebar.radio[0].set_value('Prediction Results').run()
     app.session_state['explore_axes'] = axes  # Migrate stale multi-axis selections as well.
     app.run()
-    assert len(app.multiselect(key='explore_axes').value) == 1
+    assert app.session_state['explore_axes'] == ['A']
+    assert not any(w.key == 'explore_axes' for w in app.multiselect)
     app.radio(key='explore_mode').set_value('Relative-dose exploration').run()
-    app.multiselect(key='explore_axes').set_value(axes[:1]).run()
-    if 'A' in axes:
-        app.number_input(key='explore_A_lo').set_value(.7).run()
+    app.number_input(key='explore_A_lo').set_value(.7).run()
     app.sidebar.radio[0].set_value('Target Trial').run()
-    app.button(key='plan_B_remove').click().run()
+    assert not any(b.key == 'plan_B_remove' for b in app.button)
     app.sidebar.radio[0].set_value('Prediction Results').run()
     assert app.radio(key='explore_mode').value == 'Relative-dose exploration'
-    assert app.multiselect(key='explore_axes').value == ['A']
-    if 'A' in axes:
-        assert app.number_input(key='explore_A_lo').value == .7
+    assert app.session_state['explore_axes'] == ['A']
+    assert app.number_input(key='explore_A_lo').value == .7
     assert not app.exception and not app.error
 
 

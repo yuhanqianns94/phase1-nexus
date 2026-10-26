@@ -220,6 +220,11 @@ def build_results_bundle(result, simulation=None, search=None):
     settings = [{'Setting': 'Prediction run', 'Value': result.get('run_id')},
                 {'Setting': 'Calculation version', 'Value': method.get('prediction_engine_version')},
                 {'Setting': 'Analysis', 'Value': label}, {'Setting': 'Target DLT probability', 'Value': target['target_dlt']}]
+    analysis = target.get('profile', {}).get('single_drug_analysis', {})
+    if isinstance(analysis.get('combination_present'), bool):
+        settings.append({'Setting': 'Combination treatment', 'Value': 'Yes' if analysis['combination_present'] else 'No'})
+        if analysis['combination_present'] and analysis.get('combination_prior_level'):
+            settings.append({'Setting': 'Combination toxicity prior', 'Value': analysis['combination_prior_level'].title()})
     for group, data in [('Parameter prior', result.get('evidence_contract', {}).get('prior', {})),
                         ('Historical borrowing', method.get('power_prior') or {}),
                         ('Simulation', (simulation or {}).get('settings', {}))]:

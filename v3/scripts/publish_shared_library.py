@@ -22,6 +22,8 @@ def main(argv=None) -> int:
     pack.add_argument("--extraction-root", action="append", required=True, type=Path,
                       help="Repeat for additional extraction roots; only immediate document directories are read")
     pack.add_argument("--posterior-root", action="append", default=[], type=Path)
+    pack.add_argument("--include-incomplete", action="store_true",
+                      help="Include processed articles with incomplete coverage, retaining all completeness flags and exclusions")
     pack.add_argument("--output", required=True, type=Path)
     install = subparsers.add_parser("install", help="Validate and activate a versioned bundle")
     install.add_argument("--bundle", required=True, type=Path)
@@ -30,7 +32,8 @@ def main(argv=None) -> int:
     args = parser.parse_args(argv)
     try:
         if args.command == "pack":
-            report = pack_shared_library(args.extraction_root, args.output, posterior_roots=args.posterior_root)
+            report = pack_shared_library(args.extraction_root, args.output, posterior_roots=args.posterior_root,
+                                         include_incomplete=args.include_incomplete)
         else:
             report = install_shared_library(args.bundle, args.destination, expected_sha256=args.sha256)
     except (OSError, ValueError, EOFError, tarfile.TarError, zipfile.BadZipFile) as error:

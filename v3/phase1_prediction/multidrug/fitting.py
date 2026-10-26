@@ -14,7 +14,7 @@ from numpyro.infer import MCMC, NUTS, Predictive
 from numpyro.diagnostics import summary
 
 from .contracts import ModelScope, PriorSpec, SamplerSpec
-from .math import component_risks, logistic_risk, product_logistic_risk, interaction_sets
+from .math import component_risks, logistic_risk, product_logistic_risk, interaction_sets, single_drug_logistic_risk
 from . import validate_backend
 
 
@@ -48,6 +48,16 @@ def sample_curve_parameters(drugs, backend, prior):
     """One joint proper prior, reused by article-local and target models."""
     validate_backend(backend)
     k = len(drugs)
+    if backend == 'single_drug_logistic':
+        from .single_drug import CONTEXT_ID
+        if k != 2 or drugs[0].mode != 'numeric' or drugs[1].mode != 'background' or drugs[1].model_drug_id != CONTEXT_ID:
+            raise ValueError('Single-drug fitting requires a projected focal numeric drug and combination context.')
+        alpha = numpyro.sample('alpha', dist.Normal(prior.intercept_mean, prior.intercept_sd))
+        ell = numpyro.sample('ell', dist.Normal(prior.log_slope_mean, prior.log_slope_sd))
+        delta = numpyro.sample('delta', dist.HalfNormal(prior.combination_sd))
+        log_b = numpyro.deterministic('log_b', jnp.stack((ell, jnp.asarray(0.))))
+        eta = numpyro.deterministic('eta', jnp.zeros(0))
+        return alpha, log_b, eta, delta
     if backend == 'logistic_product':
         a = numpyro.sample('alpha', dist.Normal(prior.intercept_mean, prior.intercept_sd))
         # A present background drug has an estimated main effect at r=1.
@@ -63,8 +73,7 @@ def sample_curve_parameters(drugs, backend, prior):
             log_b = log_b.at[jnp.array(numeric_indices)].set(sampled)
     numpyro.deterministic("log_b", log_b)
     groups = interaction_sets(k)
-    eta = (numpyro.sample("eta", dist.Normal(0., jnp.array([
-        prior.pair_sd if len(g) == 2 else prior.triple_sd for g in groups])).to_event(1))
+    eta = (numpyro.sample("eta", dist.Normal(0., prior.pair_sd).expand((len(groups),)).to_event(1))
         if groups else jnp.zeros(0))
     if not groups:
         numpyro.deterministic("eta", eta)
@@ -73,6 +82,12 @@ def sample_curve_parameters(drugs, backend, prior):
 
 def curve_risk_function(drugs, backend, parameters):
     validate_backend(backend)
+    if backend == 'single_drug_logistic':
+        alpha, log_b, _, delta = parameters
+        def focal_risk(r, present):
+            return single_drug_logistic_risk(alpha, log_b[0], jnp.where(present[0], r[0], 0.),
+                                             delta, present[1])
+        return focal_risk
     a, log_b, eta = parameters
     numeric_mask = jnp.array([d.mode == "numeric" for d in drugs])
 
@@ -92,6 +107,9 @@ def observe_scope(scope, risk, prior, likelihood_power=1.):
     Finite cohort-state mixtures are marginalized before applying the power;
     continuous dose/fraction priors remain untempered (partial discounting).
     """
+    from phase1_extraction.models import has_retired_r3_provenance
+    if any(has_retired_r3_provenance(o.provenance) for o in scope.observations):
+        raise ValueError("Retired R3 denominators cannot enter the likelihood")
     for oi, observation in enumerate(scope.observations):
         allocated = [(j,e) for j,e in enumerate(observation.exposures) if e.dose_subgroups]
         if len(allocated) > 1:

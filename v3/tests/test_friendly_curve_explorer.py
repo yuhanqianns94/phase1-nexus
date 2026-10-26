@@ -59,20 +59,29 @@ def test_relative_actual_and_planned_views_preserve_separate_edits():
     assert not app.exception
 
 
-def test_two_drug_goal_creates_grid_and_retains_fixed_companion_in_three_drug_plan():
+def test_combination_plan_has_one_focal_axis_and_fixed_companions():
     draft = draft_for(3)
     for point in draft['points']:
         point['doses']['C'] = 15.
     app = app_for(draft)
-    app.radio(key='explore_goal').set_value('Explore two drugs').run()
-    assert app.multiselect(key='explore_axes').value == ['A', 'B']
-    app.number_input(key='explore_B_actual_hi').set_value(60.).run()
+    assert 'Explore two drugs' not in app.radio(key='explore_goal').options
+    assert app.multiselect(key='explore_axes').value == ['A']
     result = app.session_state['result']
-    assert result['profile']['planning']['exploration']['axes'] == ['A', 'B']
+    assert result['profile']['single_drug_analysis']['focal_drug_id'] == 'A'
     assert len({p['doses']['A'] for p in result['points']}) > 1
-    assert len({p['doses']['B'] for p in result['points']}) > 1
+    assert {p['doses']['B'] for p in result['points']} == {30.}
     assert {p['doses']['C'] for p in result['points']} == {15.}
     assert app.session_state['draft'] == draft
+    assert not app.exception
+
+
+def test_planned_regimens_reject_varying_companion_doses():
+    draft = draft_for(2)
+    draft['points'][1]['doses']['B'] = 60.
+    app = app_for(draft)
+    app.radio(key='explore_goal').set_value('Compare planned regimens').run()
+    assert app.session_state['result'] is None
+    assert any('Only the focal drug may vary' in item.value for item in app.info)
     assert not app.exception
 
 

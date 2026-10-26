@@ -53,9 +53,9 @@ def test_stored_unsupported_model_is_rejected_before_arrays_are_loaded(tmp_path,
 
 def test_cli_exposes_only_the_supported_model(monkeypatch, capsys):
     from phase1_prediction.multidrug.__main__ import main
-    assert BACKENDS == ('logistic', 'logistic_product')
+    assert BACKENDS == ('logistic', 'logistic_product', 'single_drug_logistic')
     monkeypatch.setattr('sys.argv', ['models', 'source', '--report', 'report.json', '--backend', 'unsupported'])
     with pytest.raises(SystemExit) as error:
         main()
     assert error.value.code == 2
-    assert '--backend {logistic,logistic_product}' in capsys.readouterr().err
+    assert '--backend {logistic,logistic_product,single_drug_logistic}' in capsys.readouterr().err

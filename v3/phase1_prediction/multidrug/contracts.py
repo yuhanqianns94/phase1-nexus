@@ -112,15 +112,30 @@ class ModelScope(Contract):
 
 
 class PriorSpec(Contract):
-    prior_id: str = "multidrug_weak_v1"
+    prior_id: str = "multidrug_pairwise_weak_v2"
     intercept_mean: float = -1.1
     intercept_sd: float = Field(default=2.5, gt=0)
     log_slope_mean: float = 0.0
     log_slope_sd: float = Field(default=1.0, gt=0)
     pair_sd: float = Field(default=1.0, gt=0)
-    triple_sd: float = Field(default=0.5, gt=0)
+    combination_sd: float = Field(default=0.5, gt=0)
     missing_log_dose_sd: float = Field(default=1.0, gt=0)
     unknown_presence_probability: float = Field(default=0.5, gt=0, lt=1)
+
+    @model_validator(mode='before')
+    @classmethod
+    def retire_three_way_prior(cls, value):
+        """Load old settings without carrying retired three-way parameters forward.
+
+        Posterior versions are independently checked, so this migration does not
+        make historical three-way posterior samples compatible with this model.
+        """
+        if isinstance(value, dict) and 'triple_sd' in value:
+            value = dict(value)
+            value.pop('triple_sd')
+            if value.get('prior_id') == 'multidrug_weak_v1':
+                value['prior_id'] = 'multidrug_pairwise_weak_v2'
+        return value
 
 
 class SamplerSpec(Contract):
@@ -149,6 +164,8 @@ class TargetDrug(Contract):
 
     @model_validator(mode='after')
     def consistent_transport(self):
+        if self.allow_background_anchor:
+            raise ValueError('A dose-unknown source cannot anchor a numeric target; numeric targets require numeric source doses.')
         if self.transport_mode == 'same_entity_unit_conversion' and (self.mode == 'background' or self.allow_background_anchor):
             raise ValueError('Same-drug unit conversion requires numeric doses and cannot use a background anchor. Choose relative-dose analogy for anchoring.')
         return self
@@ -183,6 +200,9 @@ class TargetRegimen(Contract):
     target_dlt: float = Field(default=0.25, gt=0, lt=1)
     mapping_overrides: dict[str, dict[str, str]] = Field(default_factory=dict)
     minimum_drug_similarity: float = Field(default=DEFAULT_MIN_DRUG_SIMILARITY, ge=0, le=1)
+    # Zero preserves imported legacy analyses; the web workflow sets its own
+    # explicit coverage threshold instead of a drug-similarity threshold.
+    minimum_clinical_coverage: float = Field(default=0., ge=0, le=1)
 
     @model_validator(mode="after")
     def complete(self):

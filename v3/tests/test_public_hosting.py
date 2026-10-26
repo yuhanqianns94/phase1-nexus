@@ -57,6 +57,21 @@ def _enter(app, email="reader@example.com"):
     return app
 
 
+def test_shared_library_labels_partial_coverage_without_claiming_completion(tmp_path, monkeypatch):
+    from test_shared_release import article
+    from phase1_project.shared_release import pack_shared_library, install_shared_library
+    article(tmp_path / "source", "PMID42718886", complete=False)
+    bundle = tmp_path / "partial.tar.gz"
+    pack_shared_library([tmp_path / "source"], bundle, include_incomplete=True)
+    install_shared_library(bundle, tmp_path / "shared")
+    app = _enter(_public_app(tmp_path, monkeypatch))
+    app.sidebar.radio[1].set_value("Library").run()
+    assert not app.exception
+    table = next(frame.value for frame in app.dataframe if "V3 extraction" in frame.value.columns)
+    assert table.iloc[0]["V3 extraction"] == "Partial coverage"
+    assert any("not a manual-review status" in caption.value for caption in app.caption)
+
+
 def test_public_gate_and_private_drafts_for_same_email(tmp_path, monkeypatch):
     a = _public_app(tmp_path, monkeypatch).run()
     assert a.title[0].value == "Welcome to PHASE I NEXUS"

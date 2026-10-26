@@ -173,6 +173,7 @@ def intro():
         '- **Source wording and normalized facts coexist.** Source text provides traceability. Explicit structured operators, thresholds and units take precedence over parsed defaults. A number without an explicit comparison or grade statement is not guessed to be a threshold.',
         '- **A new trial needs pretrial facts.** Historical sample sizes, DLT counts, observed toxicities, design execution, evidence locations and extraction statuses are not Plan requirements.',
         '- **Existing articles are not re-extracted automatically.** Saved source extractions remain intact. The new contract applies to subsequent extraction; compatibility normalization does not overwrite source evidence.','',
+        'R3 is retired. Legacy `r3_design_inferred` provenance remains readable for historical audit only; it cannot supply a denominator or arithmetic input in current extraction.','',
         '## Reading the tables','',
         '`[]` denotes repeated records: $.cohorts[].exposures[] contains each drug in each cohort. null or an empty list means the corresponding information is absent. unclear and unknown are legal only where explicitly listed. A property being required in a JSON response does not authorize inventing its value when the source is silent.','',
         'The Plan relationship column describes the input boundary. Historical results and provenance support extraction, review and modeling; the user planning a new trial does not re-enter them.',

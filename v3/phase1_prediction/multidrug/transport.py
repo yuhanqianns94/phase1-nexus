@@ -31,24 +31,28 @@ def _summary(matrix, target):
 def _mapped_r(target, scope, mapping, backend='logistic'):
     indices = {d.model_drug_id: i for i, d in enumerate(scope.drugs)}
     matrix = np.zeros((len(target.points), len(scope.drugs)))
-    anchors = []
     for td in target.drugs:
         j = indices[mapping['pairs'][td.drug_id]]
         sd = scope.drugs[j]
         for pi, p in enumerate(target.points):
             matrix[pi, j] = mapped_relative_dose(td, sd, p.doses[td.drug_id])
-        if sd.mode == 'background' and td.mode == 'numeric' and td.allow_background_anchor:
-            anchors.append(j)
-    if anchors and backend == 'logistic_product':
-        raise ValueError('Product-interaction Logistic requires a numeric source axis for numeric target doses; background-to-numeric anchoring is available only in Component Logistic.')
-    return matrix, anchors
+    return matrix, []
 
 
 def _evaluate(scope, arrays, draw_ids, target, mapping, backend, prior, rng):
     validate_backend(backend)
     flat = flat_samples(arrays)
     log_b = flat['log_b'][draw_ids].copy()
-    r, anchors = _mapped_r(target, scope, mapping, backend)
+    r, _ = _mapped_r(target, scope, mapping, backend)
+    if backend == 'single_drug_logistic':
+        from .math import single_drug_logistic_risk
+        values = jax.jit(jax.vmap(single_drug_logistic_risk, in_axes=(0, 0, None, 0, None)))(
+            flat['alpha'][draw_ids], log_b[:, 0], jnp.asarray(r[:, 0]),
+            flat['delta'][draw_ids], jnp.asarray(r[:, 1] > 0))
+        matrix = np.asarray(values)
+        if not np.isfinite(matrix).all():
+            raise ValueError('Single-drug Logistic produced non-finite risks.')
+        return matrix, {}
     if backend == 'logistic_product':
         from .math import product_logistic_risk
         values = jax.jit(jax.vmap(product_logistic_risk, in_axes=(0, 0, None, 0)))(
@@ -59,19 +63,12 @@ def _evaluate(scope, arrays, draw_ids, target, mapping, backend, prior, rng):
         return matrix, {}
     a = flat['a'][draw_ids]
     numeric = np.array([d.mode == 'numeric' for d in scope.drugs])
-    for j in anchors:
-        numeric[j] = True
-        log_b[:, j] = rng.normal(prior.log_slope_mean, prior.log_slope_sd, len(draw_ids))
-    # Unknown-dose source interactions retain their observed reference-background coordinate.
-    interaction_r = r.copy()
-    for j in anchors:
-        interaction_r[:, j] = (r[:, j] > 0).astype(float)
     def one(a, b, eta, doses, interaction_doses, numeric_mask):
         q = component_risks(a, b, doses, numeric_mask, doses > 0)
         return logistic_risk(q, interaction_doses, eta)
     values = jax.jit(jax.vmap(one, in_axes=(0, 0, 0, None, None, None)))(
-        a, log_b, flat['eta'][draw_ids], jnp.asarray(r), jnp.asarray(interaction_r), jnp.asarray(numeric))
-    return np.asarray(values), {str(j): log_b[:, j].tolist() for j in anchors}
+        a, log_b, flat['eta'][draw_ids], jnp.asarray(r), jnp.asarray(r), jnp.asarray(numeric))
+    return np.asarray(values), {}
 
 
 def _base_result(target, backend, synthesis, seed):
@@ -85,7 +82,7 @@ def _base_result(target, backend, synthesis, seed):
 
 def transport_joint_posteriors(entries, target, *, backend='logistic', draw_count=1000, seed=20260919,
                                prior=None, weights=None, threshold=0., top_articles=None,
-                               aggregation='mixture', relevance_decisions=None):
+                               aggregation='mixture', relevance_decisions=None, mappings=None):
     if aggregation not in {'mixture', 'average'}:
         raise ValueError('Unknown whole-regimen posterior aggregation')
     prior = prior or PriorSpec()
@@ -94,7 +91,10 @@ def transport_joint_posteriors(entries, target, *, backend='logistic', draw_coun
     by_doc = defaultdict(list)
     for scope, arrays, manifest in entries:
         if relevance_multiplier(scope.document_id,relevance_decisions)==0:continue
-        mapping = match_target(target, scope, weights=weights)
+        mapping = ((mappings or {}).get(scope.scope_id) if mappings is not None
+                   else match_target(target, scope, weights=weights))
+        if mapping is None:
+            raise ValueError('Missing frozen focal-drug mapping for ' + scope.scope_id)
         reason = None
         if manifest['backend'] != backend:
             reason = 'backend_mismatch'
@@ -108,14 +108,6 @@ def transport_joint_posteriors(entries, target, *, backend='logistic', draw_coun
             except ValueError as error:
                 reason = str(error)
         if reason:
-            result['excluded'].append({'source_fit_id': manifest['source_fit_id'], 'reason': reason})
-            continue
-        # Preserve source structure; interactions must not move beyond target top3.
-        src_top = {d.model_drug_id for d in scope.drugs[:3]}
-        moved = [i for i, d in enumerate(target.drugs) if mapping['pairs'][d.drug_id] in src_top]
-        if len(moved) >= 2 and max(moved) >= 3:
-            reason = ('Source interaction would move beyond the first three target drugs. Revise the mapping or drug order, or select Component Logistic for component assembly.'
-                      if backend == 'logistic_product' else 'source_interaction_exceeds_target_top3_use_assembly')
             result['excluded'].append({'source_fit_id': manifest['source_fit_id'], 'reason': reason})
             continue
         score = mapping['score']

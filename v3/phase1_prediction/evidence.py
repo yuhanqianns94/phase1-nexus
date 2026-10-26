@@ -11,7 +11,7 @@ from typing import Any, Iterable
 
 from phase1_extraction.artifacts import ArticlePaths, read_json, sha256_file
 from phase1_extraction.friendly_review import FriendlyArticleReview
-from phase1_extraction.models import CurveRow, ReportedExtraction
+from phase1_extraction.models import CurveRow, ReportedExtraction, POLICY_VERSION, has_retired_r3_provenance
 
 from .models import EvidencePoint, EvidencePolicy, EvidenceSeries, LibrarySnapshot, ReviewPolicy
 from .compact_adapter import matching_data, publication_matching_data
@@ -226,6 +226,9 @@ def _article_series(
         notices.update(review_counts)
     grouped: dict[tuple[str, ...], list[CurveRow]] = defaultdict(list)
     for row in rows:
+        if has_retired_r3_provenance(row):
+            skipped["retired_r3_denominator"] += 1
+            continue
         if row.dose_value is None or row.dose_value <= 0 or not row.dose_unit or row.dose_unit == "unknown" or row.n is None or row.y is None:
             skipped["invalid_curve_row"] += 1
             continue
@@ -241,7 +244,7 @@ def _article_series(
         key = (row.study_id, row.part_id or "", row.arm_id or "", row.series_id, row.regimen_id, row.varying_component_id, row.window_id or "", background, canonical_unit)
         grouped[key].append(row)
     result: list[EvidenceSeries] = []
-    article_fingerprint = _fingerprint({"extraction": sha256_file(paths.reported_extraction), "curves": sha256_file(paths.curve_rows), "review": sha256_file(paths.friendly_human_review) if review_policy != "extracted" and paths.friendly_human_review.is_file() else None})
+    article_fingerprint = _fingerprint({"policy": POLICY_VERSION, "extraction": sha256_file(paths.reported_extraction), "curves": sha256_file(paths.curve_rows), "review": sha256_file(paths.friendly_human_review) if review_policy != "extracted" and paths.friendly_human_review.is_file() else None})
     for key, members in sorted(grouped.items()):
         first = members[0]
         label, intervention_name, features = _features(extraction, first, overrides if review_policy != "extracted" else {})

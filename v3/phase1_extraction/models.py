@@ -16,7 +16,19 @@ from .controlled_vocabulary import (
 
 SCHEMA_VERSION = "phase1_extraction_v3.3"
 IR_VERSION = "phase1_document_ir_v3.1"
-POLICY_VERSION = "phase1_policy_v3.1"
+POLICY_VERSION = "phase1_policy_v3.2_no_r3"
+
+
+def has_retired_r3_provenance(record: object) -> bool:
+    """Recognize historical design assumptions even if one legacy tag is missing."""
+    def value(key: str, default=None):
+        return record.get(key, default) if isinstance(record, dict) else getattr(record, key, default)
+
+    return bool(
+        "R3" in (value("rule_ids", []) or [])
+        or value("denominator_basis") == "design_inferred"
+        or value("denominator_role") == "design_assumed_cohort"
+    )
 
 
 class StrictModel(BaseModel):
@@ -177,6 +189,8 @@ class EvidenceLink(StrictModel):
 class ValueProvenance(StrictModel):
     """How a value entered the reported or resolved data model."""
 
+    # r3_design_inferred is accepted only to read legacy artifacts; it is never
+    # eligible as a current denominator or an arithmetic input.
     basis: Literal[
         "source_reported", "arithmetic_derived", "r1_inferred_patient_count",
         "r2_imputed_zero", "r3_design_inferred", "unknown",
@@ -364,10 +378,11 @@ class ResearchOrdering(StrictModel):
     """Model metadata, deliberately excluded from clinical/review identity."""
 
     research_priority: int | None = Field(default=None, ge=1)
-    research_role: Literal["primary", "co_primary", "partner", "background", "unclear"] = "unclear"
+    research_role: Literal["primary", "co_primary", "partner", "background", "unclear"] = Field(
+        default="unclear", description="Research objective role: primary is the main investigated drug; co_primary marks every jointly investigated main drug. Distinguish fixed partners and background/supportive agents. Use source objectives or dose-finding evidence, not list order or dose magnitude.")
     priority_basis: Literal["source_reported", "human_confirmed", "deterministic_fallback", "unknown"] = "unknown"
-    priority_reason: str | None = None
-    priority_evidence: list[EvidenceLink] = Field(default_factory=list)
+    priority_reason: str | None = Field(default=None, description="Source-supported reason for the research role and ordering; explain uncertainty when unclear.")
+    priority_evidence: list[EvidenceLink] = Field(default_factory=list, description="Source passages supporting which drug(s) are primarily investigated.")
 
 
 class RegimenComponent(ResearchOrdering):
@@ -642,6 +657,7 @@ class ReportedExtraction(StrictModel):
 
 class RuleApplication(StrictModel):
     rule_application_id: str
+    # R3 remains readable for historical audit only; the resolver never emits it.
     rule_id: Literal["R1", "R2", "R3", "D0", "DENOMINATOR_SELECTION", "DETERMINISTIC_DERIVATION"]
     version: str
     target_id: str
@@ -687,6 +703,7 @@ class CurveRow(StrictModel):
     reported_dlt_evaluable_n: int | None = None
     reported_dlt_count: int | None = None
     numerator_basis: Literal["reported", "derived", "inferred_patient_count", "imputed_zero", "missing"] = "missing"
+    # Historical design fields remain readable, but cannot make a row usable.
     denominator_basis: Literal["reported", "derived", "design_inferred", "missing"] = "missing"
     denominator_role: Literal["paired_dlt", "dlt_evaluable", "treated", "equivalent_treated", "design_assumed_cohort", "unknown"] = "unknown"
     rule_ids: list[str] = Field(default_factory=list)
@@ -705,6 +722,14 @@ class CurveRow(StrictModel):
             raise ValueError("n must be positive")
         if self.y is not None and self.y < 0:
             raise ValueError("y cannot be negative")
+        if has_retired_r3_provenance(self):
+            self.included_in_default = False
+            self.included_in_reported_only = False
+            self.outcome_usable = False
+            reason = "retired_r3_denominator"
+            for reasons in (self.exclusion_reasons, self.outcome_exclusion_reasons):
+                if reason not in reasons:
+                    reasons.append(reason)
         # y > n is retained as an excluded row plus an Issue so the source
         # conflict remains inspectable instead of making the whole artifact
         # impossible to serialize.

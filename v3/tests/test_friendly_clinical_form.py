@@ -51,7 +51,7 @@ def test_first_drug_can_be_named_directly_without_adding_an_empty_record():
     assert result['points']==[]
     assert 'presence' not in result['drugs'][0]['profile']
     assert result['profile']['planning']['exposure_states']=={}
-    assert any('Ready to review evidence' in message.value for message in app.success)
+    assert any('Plan saved. Next, review matching articles.' in message.value for message in app.success)
 
 
 def test_clinical_pages_preserve_imported_facts():
@@ -64,7 +64,7 @@ def test_clinical_pages_preserve_imported_facts():
         'administration_days':'Days 1–5 unless interrupted for toxicity',
         'source':{'page':3},'structured':{'source_schedule':'retain'}}]
     app=_form_app(draft)
-    assert [tab.label for tab in app.tabs]==['1. Drugs','2. Administration','3. Population','4. DLT','5. Doses (optional)','6. Review']
+    assert [tab.label for tab in app.tabs]==['1. Drugs','2. Administration','3. Population','4. DLT','5. Doses (optional)','6. Summary']
     assert not app.expander
     app.text_input(key='plan_A_name').set_value('Edited drug name').run()
     result=app.session_state['result']
@@ -228,7 +228,7 @@ def _workflow_app(tmp_path,monkeypatch,*,with_article=True):
 
 
 @pytest.mark.parametrize('page,setting_key,field,value',[
-    ('Review evidence','workflow_min_drug_similarity','minimum_drug_similarity',.45),
+    ('Review evidence','workflow_min_clinical_coverage','minimum_clinical_coverage',.45),
     ('Prediction Results','workflow_target_dlt','target_dlt',.3),
 ])
 def test_visiting_trial_plan_preserves_result_for_already_saved_settings(tmp_path,monkeypatch,page,setting_key,field,value):

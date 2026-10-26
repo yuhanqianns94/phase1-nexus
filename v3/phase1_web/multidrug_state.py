@@ -43,3 +43,30 @@ def simulation_view(prediction, path_ids):
     for method in result['methods'].values():
         method['target']['path_level_ids']=list(path_ids)
     return result
+
+
+def automatic_boin_path(target):
+    """Order one focal dose axis without altering fitted columns or probabilities."""
+    from phase1_prediction.multidrug.contracts import TargetRegimen
+    from phase1_prediction.multidrug.workflow import validate_boin_target
+    target = TargetRegimen.model_validate(target)
+    numeric = [d.drug_id for d in target.drugs if d.mode == 'numeric']
+    focal = target.profile.get('single_drug_analysis', {}).get('focal_drug_id')
+    if not focal:
+        varying = [did for did in numeric if len({p.doses[did] for p in target.points}) > 1]
+        focal = varying[0] if len(varying) == 1 else numeric[0] if len(numeric) == 1 else None
+    if focal not in numeric:
+        raise ValueError('Choose one focal drug in Explore risks before simulating a trial.')
+    for drug in target.drugs:
+        if drug.drug_id != focal and len({p.doses[drug.drug_id] for p in target.points}) > 1:
+            raise ValueError('Keep ' + drug.name + ' fixed across candidate doses. Only the focal drug may vary.')
+    doses = [p.doses[focal] for p in target.points]
+    if any(d is None for d in doses):
+        raise ValueError('Enter a numeric dose for the focal drug at every level.')
+    if len(set(doses)) != len(doses):
+        raise ValueError('Each candidate dose must be different. Remove duplicate dose rows.')
+    if len(doses) < 2:
+        raise ValueError('Enter at least two different candidate doses for BOIN.')
+    path = [p.level_id for p in sorted(target.points, key=lambda p: p.doses[focal])]
+    validate_boin_target(target.model_copy(update={'path_level_ids': path}))
+    return path

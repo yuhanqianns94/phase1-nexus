@@ -225,3 +225,10 @@ Keep the forwarded development port private. Run `python -m pytest` from `v3`,
 commit the reviewed changes, and push to `main`; the same CI and Render deployment
 process applies. Codespaces has separate usage limits and billing. See
 [GitHub dev containers](https://docs.github.com/en/codespaces/setting-up-your-project-for-codespaces/adding-a-dev-container-configuration/introduction-to-dev-containers).
+
+When the owner explicitly requests publication without further completeness review,
+`pack --include-incomplete` can include processed articles with partial coverage.
+The bundle declares these article IDs in `incomplete_documents`; installation
+checks that this index matches their unchanged extraction flags. The library
+labels them **Partial coverage**. Missing values, evidence exclusions, and
+model eligibility remain unchanged. The default pack behavior still omits them.

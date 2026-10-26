@@ -158,7 +158,7 @@ def test_explicit_same_patient_mapping_overrides_r1() -> None:
     assert row.included_in_reported_only
 
 
-def test_r3_then_r2_gives_three_six_three() -> None:
+def test_missing_denominators_prevent_design_inference_and_r2() -> None:
     extraction = base_extraction(design=True)
     extraction.dlt_observations = [
         DLTObservation(
@@ -171,18 +171,16 @@ def test_r3_then_r2_gives_three_six_three() -> None:
         )
     ]
     rows = resolve_extraction(extraction).curve_rows
-    assert [(row.y, row.n) for row in rows] == [(0, 3), (1, 6), (0, 3)]
-    assert rows[0].rule_ids == ["R3", "R2"]
-    assert rows[1].rule_ids == ["R3"]
-    assert rows[2].rule_ids == ["R3", "R2"]
-    assert all(row.denominator_basis == "design_inferred" for row in rows)
+    assert [(row.y, row.n) for row in rows] == [(None, None), (1, None), (None, None)]
+    assert all(not row.rule_ids for row in rows)
+    assert all(row.denominator_basis == "missing" and not row.outcome_usable for row in rows)
 
 
-def test_d0_then_r3_produces_zero_rows() -> None:
+def test_d0_preserves_zero_without_inventing_denominators() -> None:
     extraction = base_extraction(design=True, explicit_no_dlt=True)
     rows = resolve_extraction(extraction).curve_rows
-    assert [(row.y, row.n) for row in rows] == [(0, 3), (0, 3), (0, 3)]
-    assert all(row.rule_ids == ["D0", "R3"] for row in rows)
+    assert [(row.y, row.n) for row in rows] == [(0, None), (0, None), (0, None)]
+    assert all(row.rule_ids == ["D0"] and not row.outcome_usable for row in rows)
     assert not any(row.included_in_reported_only for row in rows)
 
 
@@ -239,7 +237,7 @@ def test_explicit_not_evaluable_prevents_r2() -> None:
     assert "R2" not in row.rule_ids
 
 
-def test_r3_two_dlts_defaults_to_three_and_preserves_candidates() -> None:
+def test_r1_patient_count_does_not_imply_denominator() -> None:
     extraction = base_extraction(doses=(100,), design=True)
     extraction.dlt_observations = [
         DLTObservation(
@@ -252,9 +250,10 @@ def test_r3_two_dlts_defaults_to_three_and_preserves_candidates() -> None:
         )
     ]
     row = resolve_extraction(extraction).curve_rows[0]
-    assert (row.y, row.n) == (2, 3)
-    assert row.design_candidate_ns == [3, 6]
-    assert row.rule_ids == ["R1", "R3"]
+    assert (row.y, row.n) == (2, None)
+    assert row.design_candidate_ns == []
+    assert row.rule_ids == ["R1"]
+    assert not row.outcome_usable
 
 
 def test_direct_nonstandard_n_overrides_three_plus_three() -> None:
@@ -278,7 +277,7 @@ def test_direct_nonstandard_n_overrides_three_plus_three() -> None:
     assert "R3" not in row.rule_ids
 
 
-def test_explicit_early_stop_keeps_n_three_when_y_one() -> None:
+def test_early_stop_does_not_supply_missing_actual_count() -> None:
     extraction = base_extraction(doses=(100,), design=True)
     extraction.cohorts[0].expansion_status = "stopped_before_expansion"
     extraction.dlt_observations = [
@@ -292,7 +291,7 @@ def test_explicit_early_stop_keeps_n_three_when_y_one() -> None:
         )
     ]
     row = resolve_extraction(extraction).curve_rows[0]
-    assert (row.y, row.n) == (1, 3)
+    assert (row.y, row.n) == (1, None)
 
 
 def test_unassigned_positive_dlt_prevents_zero_imputation() -> None:

@@ -130,12 +130,17 @@ def test_post_resolution_audit_catches_old_phantom_n_and_missing_zero():
     }))
     codes = {f["code"] for f in _audit_resolved_rows(e, resolved)}
     assert {"eligible_zero_not_resolved", "overlapping_cohort_projections",
-            "design_denominator_conflicts_with_reported_count"} <= codes
+            "retired_r3_denominator"} <= codes
 
 
 def partial_nested_zero_extraction():
     """A reported higher-dose zero remains explicit despite missing supplements."""
     e = base_extraction(doses=(10, 15, 20), design=True)
+    e.population_counts = [
+        PopulationCount(count_id=f"n{i}", study_id="study", cohort_id=f"c{i}",
+                        role="treated", reported_value=n)
+        for i, n in enumerate((6, 3, 3), 1)
+    ]
     e.material_coverage_complete = False
     e.result_scopes[0].dlt_results_coverage = "partial"
     e.result_scopes.append(e.result_scopes[0].model_copy(deep=True, update={
@@ -158,8 +163,8 @@ def test_explicit_nested_zero_removes_empty_partial_projection_without_clearing_
     ]
     for row in resolved.curve_rows[1:]:
         assert row.result_scope_id == "higher"
-        assert row.denominator_basis == "design_inferred"
-        assert set(row.rule_ids) == {"D0", "R3"}
+        assert row.denominator_basis == "reported"
+        assert set(row.rule_ids) == {"D0"}
     assert all(s.status != "ready" for s in resolved.scope_coverage)
     assert not resolved.reported_extraction.material_coverage_complete
     assert _audit_resolved_rows(e, resolved) == []
@@ -168,7 +173,7 @@ def test_explicit_nested_zero_removes_empty_partial_projection_without_clearing_
 
 
 @pytest.mark.parametrize("change", [
-    "window", "cutoff", "no_explicit_zero", "unread", "no_design", "expansion",
+    "window", "cutoff", "no_explicit_zero", "unread", "no_count",
     "broad_observation", "broad_count", "ambiguous_nested", "contradictory_nested",
 ])
 def test_partial_nested_zero_does_not_hide_conflicts_or_unsupported_contexts(change):
@@ -181,10 +186,8 @@ def test_partial_nested_zero_does_not_hide_conflicts_or_unsupported_contexts(cha
         e.result_scopes[1].explicit_no_dlt_in_scope = False
     elif change == "unread":
         e.result_scopes[1].dlt_results_coverage = "unread"
-    elif change == "no_design":
-        e.designs = []
-    elif change == "expansion":
-        e.cohorts[1].cohort_role = "expansion"
+    elif change == "no_count":
+        e.population_counts = []
     elif change == "broad_observation":
         e.dlt_observations.append(DLTObservation(
             observation_id="conflict", study_id="study", result_scope_id="scope", cohort_id="c2",

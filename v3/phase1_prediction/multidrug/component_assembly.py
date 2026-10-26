@@ -131,18 +131,16 @@ def _average_recipes(pools, rng):
 
 
 def _draw_state(pools, target, prior, count, rng):
-    sources, anchors = {}, {}
+    sources = {}
     for td, pool in zip(target.drugs, pools):
         for c in pool:
             fit, j = _identity(c)
             if fit not in sources:
                 flat = flat_samples(c['arrays'])
                 sources[fit] = {'flat': flat, 'ids': rng.integers(len(flat['a']), size=count)}
-            if c['scope'].drugs[j].mode == 'background' and td.mode == 'numeric' and td.allow_background_anchor:
-                anchors[(td.drug_id, fit, j)] = rng.normal(prior.log_slope_mean, prior.log_slope_sd, count)
-    interactions = {g: rng.normal(0, prior.pair_sd if len(g) == 2 else prior.triple_sd, count)
+    interactions = {g: rng.normal(0, prior.pair_sd, count)
                     for g in interaction_sets(len(target.drugs))}
-    return dict(sources=sources, anchors=anchors, interactions=interactions)
+    return dict(sources=sources, interactions=interactions)
 
 
 def _source_interaction(chosen, group):
@@ -169,10 +167,7 @@ def _evaluate(chosen, target, state, outputs):
         ids = source['ids'][outputs]
         a = source['flat']['a'][ids, j]
         b = source['flat']['log_b'][ids, j]
-        anchor = state['anchors'].get((td.drug_id, fit, j))
-        numeric = c['scope'].drugs[j].mode == 'numeric' or anchor is not None
-        if anchor is not None:
-            b = anchor[outputs]
+        numeric = c['scope'].drugs[j].mode == 'numeric'
         q = expit(a[:, None] + (np.exp(b[:, None]) * np.log(np.maximum(c['r'], 1e-300)) if numeric else 0.))
         q = np.where(c['r'] > 0, q, 0.)
         log_survival += np.log1p(-np.clip(q, 0, 1-1e-15))
@@ -206,11 +201,10 @@ def _recipe_trace(chosen, target, state, m):
         sd = c['scope'].drugs[j]
         source = state['sources'][fit]
         draw = int(source['ids'][m])
-        anchor = state['anchors'].get((td.drug_id, fit, j))
         components.append({'target_id': td.drug_id, 'source_fit_id': fit, 'source_index': j,
             'source_id': sd.model_drug_id, 'mapping_id': c['mapping']['mapping_id'],
             'flat_draw': draw, 'candidate_weight': c['weight'],
-            'log_slope': float(anchor[m] if anchor is not None else source['flat']['log_b'][draw, j]),
+            'log_slope': float(source['flat']['log_b'][draw, j]),
             'target_role': td.research_role, 'source_role': sd.research_role,
             'role_transfer': td.research_role != sd.research_role, 'dose_mapping': td.transport_mode,
             'source_reference_dose': sd.reference_dose, 'target_reference_dose': td.reference_dose})
@@ -234,8 +228,7 @@ def _average_trace(state, m):
                              for fit, s in state['sources'].items()],
             'prior_interactions': [{'target_indices': list(g), 'value': float(v[m])}
                                    for g, v in state['interactions'].items()],
-            'anchor_log_slopes': [{'target_id': t, 'source_fit_id': f, 'source_index': j, 'value': float(v[m])}
-                                  for (t, f, j), v in state['anchors'].items()]}
+            'anchor_log_slopes': []}
 
 
 def assemble_posteriors(entries, target, *, aggregation='mixture', backend='logistic',

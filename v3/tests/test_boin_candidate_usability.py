@@ -15,15 +15,24 @@ from test_multidrug_ui_state_audit import app_with_library
 
 
 def prediction_from_cached_fixture(tmp_path,monkeypatch,*,exploration=None):
-    scope,arrays,manifest,target=fixture(1)
+    # Use the current focal-drug model, including frozen evaluation on return.
+    from test_single_drug_pipeline import example, arrays
+    scored,target=example(source_combo=False,target_combo=False)
+    target.drugs=target.drugs[:1]
+    for point in target.points:
+        point.doses={'A':point.doses['A']}
     if exploration is not None:
         coordinates={'A':[.5,1.,2.]} if exploration else {'A':[25.,50.,100.]}
         target=exploration_target(target.model_dump(mode='json'),coordinates,['A'],relative=exploration)
-    store=PosteriorStore(tmp_path/'cache')
-    entry=store.save('fit_x',scope,arrays,manifest)
-    monkeypatch.setattr(service,'_select',lambda *a,**kw: ([(scope,{'score':{'similarity':1.}},1.)],{'notices':[]}))
-    monkeypatch.setattr(service,'fit_library',lambda *a,**kw: ([entry],[]))
-    prediction=service.predict(None,target,store_root=tmp_path/'cache',draw_count=4).to_dict()
+    scope=scored[0][0]
+    scored=[(scope,service.match_target(service._focal_matching_target(target),scope),1.)]
+    monkeypatch.setattr(service,'_select',lambda *a,**kw: (scored,{'notices':[]}))
+    def fit(scopes,**kwargs):
+        store=PosteriorStore(kwargs['store_root'])
+        return [store.save('fit_'+scope.scope_id,scope,arrays(),
+                          {'backend':'single_drug_logistic','status':'fitted'}) for scope in scopes],[]
+    monkeypatch.setattr(service,'fit_library',fit)
+    prediction=service.predict(None,target,backend='single_drug_logistic',store_root=tmp_path/'cache',draw_count=4).to_dict()
     monkeypatch.setattr(PosteriorStore,'fit',lambda *a,**kw: (_ for _ in ()).throw(AssertionError('BOIN must not fit source models')))
     return prediction
 
@@ -42,15 +51,14 @@ def test_actual_exploration_reuses_regimens_and_original_prediction(tmp_path,mon
     assert next(r for r in app.radio if r.label=='Candidate regimen source').value=='Use evaluated actual-dose regimens'
     assert not any(b.label=='Evaluate BOIN candidate regimens' for b in app.button)
     assert not any(t.label=='A actual dose unit' for t in app.text_input)
-    path_key='simulation_path_'+prediction['run_id']
-    app.multiselect(key=path_key).set_value(['G3','G1']).run()
+    assert not any(widget.label.startswith('BOIN path:') for widget in app.multiselect)
     app.number_input(key='boin_design_scenarios').set_value(1).run()
     app.number_input(key='boin_design_repetitions').set_value(2).run()
     next(b for b in app.button if b.label=='Run BOIN').click().run()
     simulation=app.session_state['multidrug_simulation']
     assert simulation['prediction_run_id']==prediction['run_id']
-    assert [p['level_id'] for p in simulation['path']]==['G3','G1']
-    assert [p['doses']['A'] for p in simulation['path']]==[100.,25.]
+    assert [p['level_id'] for p in simulation['path']]==['G1','G2','G3']
+    assert [p['doses']['A'] for p in simulation['path']]==[25.,50.,100.]
     assert fingerprint(app.session_state['multidrug_prediction'])==identity
     assert not app.error and not app.exception
 
@@ -94,7 +102,7 @@ def test_relative_coordinates_require_explicit_actual_doses_and_reference(tmp_pa
     def entered_candidates(*args,**kwargs):
         rendered=original_editor(*args,**kwargs)
         if kwargs.get('key')==prefix+'_new':
-            return pd.DataFrame([{'Regimen':'R1','A':25.},{'Regimen':'R2','A':50.},{'Regimen':'R3','A':100.}])
+            return pd.DataFrame([{'A':25.},{'A':50.},{'A':100.}])
         return rendered
     monkeypatch.setattr(st,'data_editor',entered_candidates)
     app.run()
@@ -102,6 +110,7 @@ def test_relative_coordinates_require_explicit_actual_doses_and_reference(tmp_pa
     next(b for b in app.button if b.label=='Evaluate BOIN candidate regimens').click().run()
     updated=app.session_state['multidrug_prediction']
     assert updated['run_id']!=prediction['run_id']
+    assert [p['level_id'] for p in updated['target']['points']]==['L1','L2','L3']
     assert updated['target']['drugs'][0]['unit']=='mg'
     assert updated['target']['drugs'][0]['reference_dose']==50.
     assert not updated['target']['profile']['planning'].get('exploration')
@@ -117,11 +126,11 @@ def test_pending_candidate_rows_survive_navigation_without_reapplying_deltas(tmp
     # Send the same serialized table event that the browser sends for cell edits.
     events=app._tree.get_widget_states()
     events.widgets.add(id=editor.proto.id,string_value=json.dumps({
-        'edited_rows':{'0':{'A':30.}},'added_rows':[{'Regimen':'new','A':125.}],'deleted_rows':[]}))
+        'edited_rows':{'0':{'A':30.}},'added_rows':[{'A':125.}],'deleted_rows':[]}))
     app._run(events)
     expected=[{'Regimen':p['level_id'],'A':p['doses']['A']} for p in prediction['target']['points']]
     expected[0]['A']=30.
-    expected.append({'Regimen':'new','A':125.})
+    expected.append({'Regimen':'L3','A':125.})
     assert app.session_state['multidrug_boin_candidate_drafts'][editor_key]['edited']==expected
     app.run()
     assert app.session_state['multidrug_boin_candidate_drafts'][editor_key]['edited']==expected

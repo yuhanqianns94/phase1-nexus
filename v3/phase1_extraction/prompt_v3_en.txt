@@ -149,7 +149,7 @@ Examples:
 9. Provenance: source values use basis=source_reported. If the source itself
    provides an arithmetic identity, retain its inputs and expression and use
    arithmetic_derived. Never label a value as directly reported merely because
-   it can be reconstructed. Python, rather than the model, assigns R1/R2/R3
+   it can be reconstructed. Python, rather than the model, assigns R1/R2
    provenance.
 
 CATEGORY COVERAGE
@@ -175,7 +175,7 @@ separate. Inspect all sibling dose rows, not only rows with positive DLTs.
 
 PROJECT RULE BOUNDARY
 
-Do not apply project rules R1, R2, R3, or D0 yourself. Report what the source
+Do not apply project rules R1, R2, or D0 yourself. Report what the source
 says and the semantic facts required by those rules. In particular:
 
 - For “two DLTs occurred among six patients”, report count_kind=dlt_count,
@@ -211,7 +211,8 @@ SHORT EXAMPLES (FICTIONAL)
   DLTs: emit all three cohorts and the complete shared result scope. Do not put
   zero in the outer cohorts; R2 is left to Python.
 - Standard 3+3 with actual doses but no dose-specific N: extract the design and
-  actual doses; leave population counts absent. R3 is left to Python.
+  actual doses; leave population counts absent. No design-based denominator
+  inference is permitted anywhere in the pipeline.
 - Drug A escalates while Drug B remains fixed: one combination regimen, Drug A
   is the varying component, Drug B is fixed in every applicable cohort.
 - A baseline table reports treated N and a results paragraph reports DLTs:
@@ -231,8 +232,11 @@ SHORT EXAMPLES (FICTIONAL)
   different denominator.
 
 FIELD ATTRIBUTION AND COMPARISON CONTRACT
-Keep ALL design extraction and design rules: downstream R3 denominator inference
-still depends on them. Excluding design from similarity is not permission to omit it.
+Keep ALL design extraction and design rules as source context. Never infer an
+observed denominator from a design label, planned cohort sizes, DLT counts, or
+expansion/stopping status. Missing actual counts remain missing. Never emit
+r3_design_inferred provenance. Excluding design from similarity is not permission
+to omit it.
 Use the same CohortExposure structure for any drug class (including EIASD), with
 entity_kind=drug_class. Do not invent class members or equate a class with one
 specific drug. No mention is unknown, not absent; mixed/pooled class use must not
@@ -251,14 +255,27 @@ formal DLT window. Keep start/end/cycles and normalized_days with reported/deriv
 basis; never assume 21-day cycles or compute days without a source cycle length.
 Preserve DLT definition version, grading system/version, exceptions and logic.
 Actual observed toxicities remain DLTObservation, separate from planned criteria.
-RESEARCH ORDER FOR DOWNSTREAM MULTIDRUG MODELS
+RESEARCH ROLES FOR AUTOMATIC DRUG MATCHING
 For each regimen, assign stable research_priority (1 first), research_role,
 priority_basis, priority_reason, and supporting priority_evidence to its
-components and cohort exposures. Put the primary investigated/escalated drug
-first, then co-primary agents, core partners, and other background agents.
+components and cohort exposures. Identify the main investigated drug from the
+study objectives, investigational-agent description and dose-finding design.
+Use primary when one drug is the main object of investigation. When two or more
+drugs are jointly investigated as main agents, mark ALL of them co_primary.
+A main investigated drug can be given at a fixed dose; dose escalation alone
+must not override an explicitly stated research objective. Distinguish these
+agents from partner drugs (a treatment backbone or combination partner) and
+background drugs (concomitant, supportive or other background treatment).
+Put primary/co_primary drugs first, then partners and background agents.
+Use source_reported and cite the source passages when the role is established.
+If the objective is unclear, keep research_role=unclear and explain the missing
+evidence. A drug's position in a list, its dose magnitude, or its toxicity does
+not establish that it is a main investigated drug. Do not assign roles to favor
+a future target drug. Downstream matching considers eligible main investigated
+drugs first; among several main drugs it uses identity and drug features.
 Keep this order across all cohorts, including cohorts where a drug is absent.
-Retain ALL drugs; downstream interactions are limited to pairs and the triple
-among the first three. Never promote a fourth drug when the third is absent.
+Retain ALL drugs and their original regimen context. The prediction workflow
+uses one focal drug dose axis with the other drugs as a fixed treatment context.
 Treat any reported drug class/group with the same exposure and ordering rules
 as an individual drug. Do not invent a class member, dose, or special class flag.
 Ordering is modeling metadata; do not change clinical counts to fit the order.

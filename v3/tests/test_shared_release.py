@@ -108,6 +108,41 @@ def test_incomplete_only_library_fails(tmp_path):
         pack_shared_library([tmp_path / "inputs"], tmp_path / "bundle.tar.gz")
 
 
+def test_owner_can_publish_partial_coverage_without_rewriting_scientific_artifacts(tmp_path):
+    paths = article(tmp_path / "inputs", complete=False)
+    original = {name: (paths.root / name).read_bytes()
+                for name in ("reported_extraction.json", "curve_rows.json")}
+    bundle = tmp_path / "bundle.tar.gz"
+    report = pack_shared_library([paths.root], bundle, include_incomplete=True)
+    assert report["document_count"] == 1 and report["skipped"] == []
+    assert report["incomplete_documents"] == ["DOC"]
+    installed = install_shared_library(bundle, tmp_path / "server", expected_sha256=report["bundle_sha256"])
+    for name, data in original.items():
+        assert (Path(installed["library_root"]) / "DOC" / name).read_bytes() == data
+    manifest = json.loads((Path(installed["library_root"]).parent / "release.json").read_text())
+    assert manifest["incomplete_documents"] == ["DOC"]
+    assert load_evidence_library([installed["library_root"]]).fingerprint == load_evidence_library([paths.root]).fingerprint
+
+
+def test_partial_coverage_cannot_be_installed_without_explicit_manifest_declaration(tmp_path):
+    from phase1_project.shared_release import _canonical
+    article(tmp_path / "inputs", complete=False)
+    bundle = tmp_path / "bundle.tar.gz"
+    pack_shared_library([tmp_path / "inputs"], bundle, include_incomplete=True)
+    records = contents(bundle)
+    member, data = records[0]
+    manifest = json.loads(data)
+    manifest.pop("incomplete_documents")
+    manifest.pop("release_id")
+    manifest["release_id"] = hashlib.sha256(_canonical(manifest)).hexdigest()
+    data = _canonical(manifest)
+    member.size = len(data)
+    records[0] = (member, data)
+    archive_at(tmp_path / "undeclared.tar.gz", records)
+    with pytest.raises(ValueError, match="completed extraction"):
+        install_shared_library(tmp_path / "undeclared.tar.gz", tmp_path / "server")
+
+
 def test_evidence_and_cache_identity_survive_root_scrubbing_and_relocation(tmp_path, monkeypatch):
     original, cache = tmp_path / "local", tmp_path / "cache"
     article(original)
@@ -168,6 +203,41 @@ def test_install_and_pack_are_idempotent_and_old_release_remains(tmp_path):
     assert resolve_shared_release(destination) == Path(new["release_path"])
     assert Path(old["release_path"]).is_dir()
     assert new["release_id"] != old["release_id"]
+
+
+def test_single_drug_projected_cache_survives_publication(tmp_path, monkeypatch):
+    from phase1_prediction.multidrug.single_drug import project_scope
+    from phase1_prediction.multidrug.prior_presets import canonical_prior
+    from phase1_prediction.multidrug import fitting
+
+    original, cache = tmp_path / 'local', tmp_path / 'cache'
+    article(original)
+    scopes, _ = load_model_library([original])
+    source = project_scope(scopes[0], scopes[0].drugs[0].model_drug_id)[0]
+    backend = 'single_drug_logistic'
+    prior, sampler = canonical_prior(None, backend), SamplerSpec()
+    identity = source_fit_id(source, backend, prior, sampler)
+    arrays = {'alpha': np.zeros((2, 4)), 'delta': np.full((2, 4), .5),
+              'log_b': np.zeros((2, 4, 2)), 'eta': np.zeros((2, 4, 0))}
+    PosteriorStore(cache).save(identity, source, arrays, {
+        'backend': backend, 'status': 'fitted', 'prior': prior.model_dump(),
+        'sampler': sampler.model_dump(), 'engine_hash': engine_hash(),
+        'dependencies': numerical_dependencies(),
+    })
+    bundle = tmp_path / 'single.tar.gz'
+    report = pack_shared_library([original], bundle, posterior_roots=[cache])
+    assert report['source_posterior_count'] == 1
+    installed = install_shared_library(bundle, tmp_path / 'server')
+    relocated, _ = load_model_library([installed['library_root']])
+    projection = project_scope(relocated[0], relocated[0].drugs[0].model_drug_id)[0]
+    assert source_fit_id(projection, backend, prior, sampler) == identity
+    def no_refit(*args, **kwargs):
+        pytest.fail('A compatible published single-drug posterior must be reused')
+    monkeypatch.setattr(fitting, 'fit_source', no_refit)
+    _, restored, _ = PosteriorStore(tmp_path / 'session',
+        fallback_roots=[installed['posterior_root']]).fit(projection, backend, prior=prior, sampler=sampler)
+    np.testing.assert_array_equal(restored['delta'], arrays['delta'])
+    assert not (tmp_path / 'session').exists()
 
 
 @pytest.mark.parametrize("attack", ["traversal", "absolute", "symlink", "hardlink", "duplicate",

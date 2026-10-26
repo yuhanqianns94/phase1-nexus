@@ -60,7 +60,7 @@ DENOMINATOR_LABELS = {
     "dlt_evaluable": "DLT-evaluable N",
     "treated": "Treated N",
     "equivalent_treated": "Equivalent treated N",
-    "design_assumed_cohort": "Inferred from the study design",
+    "design_assumed_cohort": "Retired design inference (excluded)",
     "unknown": "Not specified",
 }
 

@@ -175,11 +175,20 @@ def _scope_identity(scope):
 def _library_scopes(library: Path) -> set[str]:
     from phase1_prediction.multidrug.contracts import fingerprint
     from phase1_prediction.multidrug.observations import load_model_library
+    from phase1_prediction.multidrug.single_drug import project_scope
 
     identities = set()
     for policy in ("project_default", "reported_only"):
         scopes, _ = load_model_library([library], evidence_policy=policy)
         identities.update(fingerprint(_scope_identity(scope)) for scope in scopes)
+        for scope in scopes:
+            for drug in scope.drugs:
+                if drug.mode == "numeric":
+                    try:
+                        projected = project_scope(scope, drug.model_drug_id)
+                    except ValueError:
+                        continue
+                    identities.update(fingerprint(_scope_identity(item)) for item in projected)
     return identities
 
 
@@ -210,7 +219,7 @@ def _validate_posterior(directory: Path, allowed_scopes: set[str], *, allow_loca
             any(not isinstance(k, str) or not isinstance(v, str) for k, v in dependencies.items())):
         raise ValueError("Missing numerical dependency versions")
     engine_root = Path(store_module.__file__).parent
-    source_hashes = {name: _sha(engine_root / name) for name in ("math.py", "fitting.py", "contracts.py")}
+    source_hashes = {name: _sha(engine_root / name) for name in ("math.py", "fitting.py", "contracts.py", "single_drug.py")}
     if fingerprint({"sources": source_hashes, "dependencies": dependencies}) != manifest["engine_hash"]:
         raise ValueError("Source posterior engine metadata is incompatible with the current model code")
     PriorSpec.model_validate(manifest.get("prior"))
@@ -280,26 +289,31 @@ def _snapshot(source: Path, destination: Path) -> None:
     _regular(destination)
 
 
-def _manifest_for(directory: Path, paths: list[str], documents: list[str]) -> dict:
+def _manifest_for(directory: Path, paths: list[str], documents: list[str], *, incomplete_documents=()) -> dict:
     records = [{"path": name, "size": (directory / name).stat().st_size,
                 "sha256": _sha(directory / name)} for name in sorted(paths)]
     if len(records) > MAX_FILES or sum(r["size"] for r in records) > MAX_TOTAL_BYTES:
         raise ValueError("Shared release exceeds the size limit")
     payload = {"schema_version": SCHEMA_VERSION, "documents": sorted(documents),
                "files": records, "cache_policy": CACHE_POLICY}
+    if incomplete_documents:
+        payload["incomplete_documents"] = sorted(incomplete_documents)
     return {**payload, "release_id": hashlib.sha256(_canonical(payload)).hexdigest()}
 
 
-def pack_shared_library(extraction_roots, output, *, posterior_roots=()) -> dict:
+def pack_shared_library(extraction_roots, output, *, posterior_roots=(), include_incomplete=False) -> dict:
     """Build a bundle without modifying source data or uploading anything.
 
     Each extraction root is either one document directory or a directory whose
     immediate children are documents. Incomplete results are omitted and listed
-    in the report. Conflicting duplicate document IDs fail closed.
+    in the report unless the owner explicitly includes them. Their original
+    completeness flags, missing values and row exclusions remain unchanged.
+    Conflicting duplicate document IDs fail closed.
     """
     output = Path(output).expanduser().absolute()
     output.parent.mkdir(parents=True, exist_ok=True)
     skipped, documents, paths, original_cache_hashes = [], [], [], {}
+    incomplete_documents = []
     with tempfile.TemporaryDirectory(prefix=".shared-pack-", dir=output.parent) as temporary:
         staging = Path(temporary)
         for raw_root in extraction_roots:
@@ -325,9 +339,11 @@ def pack_shared_library(extraction_roots, output, *, posterior_roots=()) -> dict
                 for filename in LIBRARY_FILES:
                     _snapshot(article / filename, target / filename)
                 if not _validate_article(target, require_complete=False):
-                    skipped.append({"document_id": article.name, "reason": "extraction_incomplete"})
-                    shutil.rmtree(target)
-                    continue
+                    if not include_incomplete:
+                        skipped.append({"document_id": article.name, "reason": "extraction_incomplete"})
+                        shutil.rmtree(target)
+                        continue
+                    incomplete_documents.append(article.name)
                 documents.append(article.name)
                 paths.extend(f"library/{article.name}/{f}" for f in LIBRARY_FILES)
         if not documents:
@@ -364,7 +380,7 @@ def pack_shared_library(extraction_roots, output, *, posterior_roots=()) -> dict
                 original_cache_hashes[fit.name] = tuple(_sha(target / f) for f in POSTERIOR_FILES)
                 _remove_staged_local_root(target)
                 paths.extend(f"source_posteriors/{fit.name}/{f}" for f in POSTERIOR_FILES)
-        manifest = _manifest_for(staging, paths, documents)
+        manifest = _manifest_for(staging, paths, documents, incomplete_documents=incomplete_documents)
         manifest_bytes = _canonical(manifest)
         bundle = staging / "bundle.tar.gz"
         with tarfile.open(bundle, "w:gz", format=tarfile.USTAR_FORMAT) as archive:
@@ -381,12 +397,14 @@ def pack_shared_library(extraction_roots, output, *, posterior_roots=()) -> dict
             "release_id": manifest["release_id"], "document_count": len(documents),
             "source_posterior_count": sum(name.endswith("/draws.npz") for name in paths),
             "uncompressed_bytes": sum(item["size"] for item in manifest["files"]),
-            "skipped": skipped, "cache_policy": CACHE_POLICY}
+            "skipped": skipped, "incomplete_documents": sorted(incomplete_documents), "cache_policy": CACHE_POLICY}
 
 
 def _validate_manifest(manifest: dict, *, max_total_bytes: int) -> dict[str, dict]:
     required = {"schema_version", "documents", "files", "cache_policy", "release_id"}
-    if not isinstance(manifest, dict) or set(manifest) != required or manifest["schema_version"] != SCHEMA_VERSION:
+    if (not isinstance(manifest, dict) or not required <= set(manifest)
+            or set(manifest) - required - {"incomplete_documents"}
+            or manifest["schema_version"] != SCHEMA_VERSION):
         raise ValueError("Unsupported shared release manifest")
     payload = {key: value for key, value in manifest.items() if key != "release_id"}
     if manifest["release_id"] != hashlib.sha256(_canonical(payload)).hexdigest():
@@ -410,6 +428,10 @@ def _validate_manifest(manifest: dict, *, max_total_bytes: int) -> dict[str, dic
     documents = sorted({name.split("/")[1] for name in expected if name.startswith("library/")})
     if not documents or manifest["documents"] != documents:
         raise ValueError("Shared release document index mismatch")
+    incomplete = manifest.get("incomplete_documents", [])
+    if (not isinstance(incomplete, list) or any(not isinstance(d, str) for d in incomplete)
+            or incomplete != sorted(set(incomplete)) or not set(incomplete) <= set(documents)):
+        raise ValueError("Invalid incomplete-document index")
     for document in documents:
         if any(f"library/{document}/{f}" not in expected for f in LIBRARY_FILES):
             raise ValueError("Incomplete shared document")
@@ -438,7 +460,10 @@ def _validate_installed(directory: Path, manifest: dict, expected: dict) -> None
         if path.stat().st_size != record["size"] or _sha(path) != record["sha256"]:
             raise ValueError("Shared release file checksum mismatch")
     for document in manifest["documents"]:
-        _validate_article(directory / "library" / document)
+        explicitly_incomplete = document in manifest.get("incomplete_documents", [])
+        complete = _validate_article(directory / "library" / document, require_complete=not explicitly_incomplete)
+        if explicitly_incomplete and complete:
+            raise ValueError("Incomplete-document index disagrees with extraction coverage")
     fits = {name.split("/")[1] for name in expected if name.startswith("source_posteriors/")}
     scopes = _library_scopes(directory / "library") if fits else set()
     for fit in fits:

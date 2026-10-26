@@ -167,7 +167,7 @@ def test_large_recipe_approximation_is_explicit_bounded_and_frozen(monkeypatch):
     np.testing.assert_allclose(repeated['posterior_draws'], np.array(result['posterior_draws'])[:, ::-1])
 
 
-def test_ui_offers_both_assembly_methods_and_dispatches_distinct_settings(tmp_path, monkeypatch):
+def test_ui_offers_three_focal_methods_and_dispatches_distinct_settings(tmp_path, monkeypatch):
     from test_prediction_pipeline import _article
     from phase1_web import multidrug_app
     _article(tmp_path, 'PMC123', rows=[(.1, 3, 0), (.3, 6, 2)])
@@ -178,20 +178,17 @@ def test_ui_offers_both_assembly_methods_and_dispatches_distinct_settings(tmp_pa
     target['drugs'][0]['name'] = 'IPH2101'
     app.session_state['multidrug_target_text'] = json.dumps(target)
     app.sidebar.radio[0].set_value('Prediction Results').run()
-    app.selectbox(key='workflow_construction').set_value('Component assembly (advanced)').run()
-    picker = app.selectbox(key='workflow_component_aggregation')
-    assert len(picker.options) == 2
+    picker = app.radio(key='workflow_formula_aggregation')
+    assert len(picker.options) == 3
     seen = []
     def fake(*args, **kwargs):
         seen.append(kwargs['synthesis'])
         return SimpleNamespace(to_dict=lambda: {'run_id': 'fake_'+kwargs['synthesis'], 'methods': {}, 'target': target})
     monkeypatch.setattr(multidrug_app, 'predict', fake)
-    for label in picker.options:
-        app.selectbox(key='workflow_component_aggregation').set_value(label).run()
+    for label in ['average', 'mixture', 'historical']:
+        app.radio(key='workflow_formula_aggregation').set_value(label).run()
         next(b for b in app.button if b.label == 'Generate prediction').click().run()
         assert not app.exception and not app.error
-    assert seen == ['cross_article_component_assembly_average', 'cross_article_component_assembly']
-    # Return to complete borrowing without invalid selectbox state.
-    app.selectbox(key='workflow_construction').set_value('Complete-regimen borrowing').run()
-    assert len(app.selectbox(key='workflow_aggregation').options) == 3
+    assert seen == ['same_article_joint_posterior_average', 'same_article_joint_posterior_mixture', 'target_power_prior']
+    assert not any(box.label in ('Evidence construction', 'Probability model') for box in app.selectbox)
     assert not app.exception

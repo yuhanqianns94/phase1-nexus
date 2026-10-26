@@ -27,10 +27,9 @@ from test_multidrug_revisions import detailed_target
 
 def independent_basis(r):
     terms=[]
-    for n in (2,3):
-        for group in combinations(range(min(3,r.shape[1])),n):
-            product=np.prod(r[:,group],axis=1)
-            terms.append(2*product/(1+product))
+    for group in combinations(range(r.shape[1]),2):
+        product=np.prod(r[:,group],axis=1)
+        terms.append(2*product/(1+product))
     return np.array(terms).T
 
 
@@ -48,7 +47,7 @@ def test_nonzero_interactions_joint_assembly_and_formula_agree_after_mapping(k):
     scope,arrays,manifest,target=fixture(k)
     a=np.array([-2.,-1.,-3.,-2.5])[:k]
     b=np.array([.3,.7,-.2,.1])[:k]
-    eta=np.array([.8,-.4,.2,-.3])[:arrays['eta'].shape[-1]]
+    eta=np.array([.8,-.4,.2,-.3,.6,-.1])[:arrays['eta'].shape[-1]]
     arrays['a'][:]=a; arrays['log_b'][:]=b; arrays['eta'][:]=eta
     mapping={target.drugs[i].drug_id:scope.drugs[(i+1)%min(k,3) if i<3 else i].model_drug_id for i in range(k)}
     target.mapping_overrides={scope.scope_id:mapping}
@@ -134,17 +133,20 @@ def test_background_dose_is_not_silently_ignored(value):
         mapped_relative_dose(target.drugs[0],scope.drugs[0],value)
 
 
-def test_strict_unit_conversion_never_degrades_to_background_anchoring():
+@pytest.mark.parametrize('mode', ['same_entity_unit_conversion', 'relative_dose_analogy'])
+@pytest.mark.parametrize('value', [0, 50, None])
+def test_numeric_target_never_accepts_a_dose_unknown_source(mode, value):
     scope,_,_,target=fixture(1)
-    drug=target.drugs[0];drug.transport_mode='same_entity_unit_conversion'
+    drug=target.drugs[0];drug.transport_mode=mode
     scope.drugs[0].mode='background'
-    with pytest.raises(ValueError,match='known numeric doses'):
-        mapped_relative_dose(drug,scope.drugs[0],50)
+    with pytest.raises(ValueError,match='numeric source axis'):
+        mapped_relative_dose(drug,scope.drugs[0],value)
+    # Old saved opt-ins must not bypass the new restriction.
     drug.allow_background_anchor=True
-    with pytest.raises(ValueError,match='background'):
+    with pytest.raises(ValueError,match='cannot anchor'):
         TargetRegimen.model_validate(target.model_dump())
-    drug.transport_mode='relative_dose_analogy'
-    assert mapped_relative_dose(drug,scope.drugs[0],100)==2
+    with pytest.raises(ValueError,match='numeric source axis'):
+        mapped_relative_dose(drug,scope.drugs[0],value)
 
 
 def test_existing_drug_ids_are_locked_and_new_rows_get_unused_ids():
@@ -168,25 +170,13 @@ def test_drug_display_name_edit_preserves_doses_and_phases():
 
 
 def test_search_survives_web_navigation_and_saves_with_prediction(tmp_path,monkeypatch):
-    from test_prediction_pipeline import _article
-    _article(tmp_path,'PMC123',rows=[(.1,3,0),(.3,6,2)])
-    monkeypatch.setenv('PHASE1_V3_EXTRACTION_ROOTS',str(tmp_path))
-    monkeypatch.setenv('PHASE1_V3_STATE_ROOT',str(tmp_path/'state'))
-    scope,arrays,manifest,target=fixture(2)
-    method=transport_joint_posteriors([(scope,arrays,manifest)],target,draw_count=4)
-    key=method['synthesis']
-    prediction={'format':'phase1_v3_multidrug_prediction_v1','run_id':'prediction_audit_regression','model_version':VERSION,
-                'target':target.model_dump(mode='json'),'methods':{key:method},'evidence_contract':{}}
-    app=AppTest.from_file(Path(__file__).parents[1]/'phase1_web/app.py',default_timeout=30)
-    app.session_state['multidrug_target_text']=json.dumps(target.model_dump(mode='json'))
-    app.session_state['explore_goal']='Compare planned regimens'
-    app.run()
-    app.session_state['multidrug_prediction']=prediction
-    app.session_state['multidrug_results']={'logistic':prediction}
-    app.sidebar.radio[0].set_value('OC Simulation').run()
+    from test_boin_candidate_usability import prediction_from_cached_fixture, boin_app
+    prediction=prediction_from_cached_fixture(tmp_path,monkeypatch)
+    app=boin_app(tmp_path,monkeypatch,prediction)
+    app.radio(key='boin_design_task').set_value('Compare multiple designs').run()
     next(x for x in app.number_input if x.label=='Posterior scenarios').set_value(1).run()
     next(x for x in app.number_input if x.label=='Trials per scenario').set_value(2).run()
-    next(x for x in app.multiselect if x.label=='Candidate maximum sample sizes').set_value([12]).run()
+    next(x for x in app.multiselect if x.label=='Candidate maximum sample sizes').set_value([12,18]).run()
     next(x for x in app.button if x.label=='Compare designs').click().run()
     assert not app.exception and not app.error
     search=app.session_state['multidrug_search']

@@ -168,13 +168,13 @@ def test_direct_tab_click_and_previous_next_share_one_navigation_state():
     app.session_state[plan_navigation.TAB_KEY]='3. Population'
     app.session_state[plan_navigation.STEP_KEY]='3. Population'
     app.run()
-    assert any('Step 3 of 6' in caption.value for caption in app.caption)
+    assert any('Section 3 of 6' in caption.value for caption in app.caption)
     assert not app.button(key='trial_plan_previous_top').disabled
     assert app.button(key='trial_plan_next_top').label=='Next: DLT'
     app.button(key='trial_plan_next_top').click().run()
     assert app.session_state[plan_navigation.STEP_KEY]=='4. DLT'
     assert app.session_state[plan_navigation.TAB_KEY]=='4. DLT'
-    assert any('Step 4 of 6' in caption.value for caption in app.caption)
+    assert any('Section 4 of 6' in caption.value for caption in app.caption)
 
 
 def test_tab_callback_commits_selected_page_before_progress_is_rendered(monkeypatch):

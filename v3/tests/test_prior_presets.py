@@ -24,7 +24,7 @@ def test_default_prior_preserves_existing_numbers_and_cache_label(backend):
         assert prior.log_slope_mean == 0.
         assert prior.unknown_presence_probability == .5
     assert presets.power_prior_preset('default').model_dump() == {
-        'strength': 1., 'patient_budget': 30., 'heterogeneity_scale': .5}
+        'strength': 1., 'patient_budget': 30., 'heterogeneity_scale': .5, 'slope_heterogeneity_scale': .5}
 
 
 def test_custom_equal_preset_shares_source_identity_but_changed_parameters_do_not():

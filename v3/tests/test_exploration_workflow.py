@@ -170,10 +170,19 @@ def test_relative_prediction_results_and_boin_editor_web(tmp_path,monkeypatch):
     _article(tmp_path,'PMC123',rows=[(.1,3,0),(.3,6,2)])
     monkeypatch.setenv('PHASE1_V3_EXTRACTION_ROOTS',str(tmp_path))
     monkeypatch.setenv('PHASE1_V3_STATE_ROOT',str(tmp_path/'state'))
-    s,a,m,t=fixture()
+    from test_single_drug_pipeline import example, arrays, BACKEND
+    scored,t=example()
     target=exploration_target(t.model_dump(),{'A':[.5,1.,2.],'B':[1.]},['A'])
-    method=transport_joint_posteriors([(s,a,m)],target,draw_count=4)
-    result={'run_id':'test_relative','target':target.model_dump(mode='json'),'methods':{'same_article_joint_posterior_mixture':method},'evidence_contract':{}}
+    projected,computational,notices=service.prepare_single_drug_evidence(scored,target)
+    assert not notices
+    entries=[(scope,arrays(),{'source_fit_id':scope.scope_id,'backend':BACKEND,'status':'fitted'})
+             for scope,_,_ in projected]
+    method=transport_joint_posteriors(entries,computational,backend=BACKEND,draw_count=4,
+        mappings={scope.scope_id:mapping for scope,mapping,_ in projected})
+    service._restore_single_target(method,target)
+    assert method['computational_target'] != method['target']
+    result={'run_id':'test_relative','target':target.model_dump(mode='json'),
+            'methods':{'same_article_joint_posterior_mixture':method},'evidence_contract':{'backend':BACKEND}}
     app=AppTest.from_file(Path(__file__).parents[1]/'phase1_web/app.py',default_timeout=30).run()
     app.session_state['multidrug_prediction']=result
     app.sidebar.radio[0].set_value('Prediction Results').run()

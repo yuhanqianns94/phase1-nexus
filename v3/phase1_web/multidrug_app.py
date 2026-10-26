@@ -1,6 +1,5 @@
 """Native full-regimen Bayesian workspace; historical analyses remain readable."""
 import json
-import copy
 from dataclasses import asdict
 from pathlib import Path
 
@@ -14,6 +13,7 @@ from phase1_prediction.multidrug.mapping import MATCHING_POLICY
 from phase1_prediction.profile_similarity import VERSION as SIMILARITY_VERSION
 from phase1_prediction.multidrug.workflow import phase_status
 from phase1_prediction.multidrug.service import predict, preview_planned, BACKENDS
+from phase1_prediction.multidrug.power_prior import POWER_PRIOR_VERSION
 from phase1_prediction.multidrug.observations import load_model_library
 from phase1_simulation.service import BoinSettings, search_boin_parameters
 from phase1_simulation.multidrug import simulate_regimen_path
@@ -42,21 +42,26 @@ def prediction_result_key(backend, synthesis, power_settings=None, prior=None):
         if power_settings is not None:
             label += (f" · borrowing {power_settings['strength']:g}, budget {power_settings['patient_budget']}, "
                       f"variation {power_settings['heterogeneity_scale']:g}")
+            if backend == 'single_drug_logistic':
+                label += f", log-slope variation {power_settings.get('slope_heterogeneity_scale', .5):g}"
         return label + ' | settings=' + fingerprint({'prior': prior.model_dump(), 'power_prior': power_settings})
     if power_settings is None:
         return label
     label += (f" · borrowing {power_settings['strength']:g}, budget {power_settings['patient_budget']}, "
               f"variation {power_settings['heterogeneity_scale']:g}")
+    if backend == 'single_drug_logistic':
+        label += f", log-slope variation {power_settings.get('slope_heterogeneity_scale', .5):g}"
     return label + ' | settings=' + fingerprint(power_settings)
 
 
 def prediction_result_label(key):
     label=key.split(' | settings=', 1)[0]
-    for value,name in {'same_article_joint_posterior_average':'Method 1: weighted average',
-                       'same_article_joint_posterior_mixture':'Method 2: curve mixture',
-                       'target_power_prior':'Method 3: power prior',
-                       'cross_article_component_assembly_average':'Method 1: component assembly average',
-                       'cross_article_component_assembly':'Method 2: component assembly mixture',
+    for value,name in {'same_article_joint_posterior_average':'Posterior average',
+                       'same_article_joint_posterior_mixture':'Posterior mixture',
+                       'target_power_prior':'Historical likelihood',
+                       'cross_article_component_assembly_average':'Component posterior average',
+                       'cross_article_component_assembly':'Component posterior mixture',
+                       'single_drug_logistic':'Single-drug Bayesian Logistic',
                        'logistic_product':'Product-interaction Logistic',
                        'logistic':'Component Logistic'}.items():
         label=label.replace(value,name)
@@ -64,22 +69,11 @@ def prediction_result_label(key):
 
 
 
-def probability_model_controls(st):
-    """Keep model selection distinct from evidence construction and aggregation."""
-    from phase1_web.prior_cache import MODEL_LABELS
-    backend = st.selectbox('Probability model', list(BACKENDS),
-        format_func=MODEL_LABELS.__getitem__, key='workflow_probability_model')
-    if backend == 'logistic_product':
-        st.latex(r'p(\mathbf r)=\sigma\left(\alpha+\sum_j e^{\ell_j}r_j+\sum_{S\in\mathcal I}\eta_S\prod_{j\in S}r_j\right)')
-        st.caption('One common intercept, positive linear relative-dose effects, and product interactions among the first three drugs. Negative interactions can produce decreasing conditional curves. At all-zero doses the risk is sigmoid(alpha).')
-        construction = st.selectbox('Evidence construction', ['Complete-regimen borrowing'],
-            key='workflow_product_construction')
-        st.caption('Component assembly is available with Component Logistic. Separate ordinary Logistic source fits do not define one shared baseline intercept for an assembled target model.')
-    else:
-        st.caption('Each drug has a dose-risk component; the full risk combines these components with bounded interaction effects.')
-        construction = st.selectbox('Evidence construction',
-            ['Complete-regimen borrowing', 'Component assembly (advanced)'], key='workflow_construction')
-    return backend, construction
+def probability_model_controls(st, drugs=None, focal_drug_id=None, *, combination=False):
+    """One focal dose curve with a nonnegative combination-background effect."""
+    from phase1_web.model_formulas import render_model
+    render_model(st, drugs or [{'name': 'Drug'}], focal_drug_id, combination=combination)
+    return 'single_drug_logistic', 'Focal drug with combination background'
 
 
 def _validate_draft_shape(draft):
@@ -105,64 +99,33 @@ def _result(result, native):
     if method.get('prediction_engine_version') != TARGET_PREDICTION_VERSION:
         st.warning('This saved result uses an older calculation version. Recompute prediction and simulation before reuse; the historical record is unchanged.')
     st.caption(prediction_result_label(method['backend']+' · '+method['synthesis'])+' · '+method['status'])
-    if result.get('evidence_contract', {}).get('prior'):
-        from phase1_web.prior_settings import prior_parameter_rows
-        with st.expander('Applied parameter priors'):
-            st.dataframe(prior_parameter_rows(result['evidence_contract']['prior'], method['backend']),
-                         hide_index=True, use_container_width=True)
-    if method['synthesis'] == 'target_power_prior':
-        st.caption('Method 3: historical information forms a prior for a new trial. Each curve includes a new-study risk shift; no target patient outcomes have been observed.')
-        if method.get('inference') == 'explicit_prior_predictive':
-            st.warning('All historical powers are zero. These curves come entirely from the specified priors.')
-        st.write('Discounted patient count (not an exact effective sample size):', method.get('discounted_patient_count', 0.))
-        with st.expander('Power prior settings and sampling diagnostics'):
-            st.json({'settings': method.get('power_prior'), 'diagnostics': method.get('sampling_diagnostics')})
-    if method.get('evidence_construction') == 'component_assembly':
-        st.caption(method['aggregation_note'])
-        st.caption('Weights are normalized separately for each target drug. Historical single-drug studies can supply components of a combination.')
-        if any(row['fixed_prior_fraction'] > 0 for row in method.get('interaction_support', [])):
-            st.info('Some assembled interactions have no shared source fit. Their coefficients are drawn from the selected interaction prior; drug similarity does not estimate them.')
-        with st.expander('Component sources and interaction origins'):
-            st.dataframe([{'target_drug': pool['target_id'], **c}
-                          for pool in method.get('component_pools', []) for c in pool['candidates']],
-                         hide_index=True, use_container_width=True)
-            st.dataframe(method.get('interaction_support', []), hide_index=True)
-            st.caption('Fractions describe average recipe weights for Method 1 and sampled recipe frequencies for Method 2. A source joint draw preserves its fitted interaction; it does not establish that the interaction is well identified.')
-        computation = method.get('assembly_computation', {})
-        if computation.get('evaluation') == 'monte_carlo_recipe_average':
-            st.info(f"Method 1 approximates the large assembly space using {computation['recipe_sample_count']} sampled recipes ({computation['evaluated_recipe_count']} distinct). The same recipe bank is reused across doses and saved-curve exploration. Intervals do not include recipe-integration error.")
+    from phase1_web.result_exports import notices
     if method['status'] != 'fitted':
-        st.warning('No usable posterior for this regimen. Check drug correspondence, data and sampling status below.')
-    else:
-        frame = pd.DataFrame(method['summary'])
-        st.dataframe(frame, hide_index=True, use_container_width=True)
-        with st.expander('Dose support and extrapolation'):
-            st.dataframe(method.get('coordinate_support',[]),hide_index=True)
-        from phase1_web.curve_explorer import render_chart
-        render_chart(st,method,key='result_'+result['run_id'])
-    with st.expander('Drug correspondence, source weights and exclusions'):
-        st.json({'contributors':method['contributors'], 'excluded':method['excluded'],
-                 'selection_frequencies':method.get('selection_frequencies'), 'evidence':result['evidence_contract']})
-    native._json_download('Download prediction and joint draws', result, result['run_id']+'.json')
+        st.warning('No usable posterior is available for this target. Review the selected evidence and analysis settings, then generate a new prediction.')
+        return
+    from phase1_web.curve_explorer import render_chart
+    render_chart(st, method, key='result_' + result['run_id'])
+    for message in notices(result):
+        st.info(message)
+    diagnostics = method.get('sampling_diagnostics') or {}
+    attempts = diagnostics.get('attempts', [])
+    if attempts and not attempts[-1].get('passed', False):
+        st.warning('Sampling checks did not pass. Recompute this prediction before using it.')
+    st.caption('Figures, numerical results and calculation settings are available in Download results.')
 
 
 
 def _prediction_output(result, native, comparisons=None):
     comparisons=comparisons or {}
     _result(result,native)
-    method = next(iter(result.get('methods', {}).values()), {})
-    backend = method.get('backend', result.get('evidence_contract', {}).get('backend'))
-    if backend == 'logistic_product':
-        st.caption('The common intercept, main effects and interactions are estimated jointly. Limited dose variation can make their individual estimates strongly prior-sensitive.')
-    else:
-        st.caption('Component risks inferred from combination data are model-derived. With fixed doses or no monotherapy data, slopes and decompositions may depend strongly on priors.')
-    if len(comparisons)>1:
-        rows=[{'backend':prediction_result_label(b),**row} for b,r in comparisons.items() for row in next(iter(r.get('methods',{}).values()),{}).get('summary',[])]
-        st.subheader('Model comparison for the same target')
-        st.dataframe(rows,hide_index=True)
+    from phase1_web.results_view import render_comparison
+    render_comparison(st, result, comparisons)
     if st.button('Continue to trial simulation'):
         from phase1_web.guided_workflow import go_to
         go_to(st,'OC Simulation')
+    if st.button('Download without trial simulation'):
+        from phase1_web.guided_workflow import go_to
+        go_to(st, 'Download results')
     if st.button('Save analysis',disabled=not result.get('methods')):
         try:
             saved=save_analysis(native.STATE_ROOT,{'prediction':result,'simulation':st.session_state.get('multidrug_simulation'),
@@ -196,8 +159,10 @@ def main(native):
     st.title('PHASE I NEXUS')
     st.caption(f"{diagnostics['document_count']} historical articles available · Plan a trial, review evidence and explore dose–toxicity risks.")
     from phase1_web.guided_workflow import (PAGE_LABELS, initialize_draft, go_to,
-        evidence_settings, sync_evidence_selection, evidence_state, render_evidence_controls)
+        evidence_settings, sync_evidence_selection, evidence_state, render_evidence_controls,
+        enforce_automatic_correspondence)
     initialize_draft(st, native.STATE_ROOT)
+    enforce_automatic_correspondence(st, native.STATE_ROOT)
     pending=st.session_state.pop('workflow_next_page',None)
     if pending in PAGE_LABELS:
         st.session_state['workflow_page']=pending
@@ -217,7 +182,7 @@ def main(native):
     st.session_state['multidrug_previous_page']=page
     if page == 'Library':
         native._library_page(roots, library, model_scopes=scopes)
-        st.subheader('Complete-regimen model inputs')
+        st.subheader('Historical regimen records')
         st.dataframe([{'article':s.document_id,'scope':s.scope_id,'regimen':s.label,
                        'drugs':' + '.join(d.name for d in s.drugs),'observations':len(s.observations),
                        'source_arms':', '.join(a or 'Ungrouped' for a in s.lineage.get('arm_ids',[s.lineage['scope_key'][2]])),
@@ -229,13 +194,16 @@ def main(native):
         if not public:
             with st.expander('Precompute and cache Phase I article posteriors'):
                 from phase1_web.prior_cache import render_source_cache
-                render_source_cache(st, scopes, backends=BACKENDS, key='library_prior_cache')
+                render_source_cache(st, scopes, backends=('single_drug_logistic',),
+                                    allow_backend_selection=False, key='library_prior_cache')
     elif page == 'Article comparison':
         from phase1_web.article_comparison import render
         render(st, library)
     elif page == 'Extraction Jobs': native._jobs_page()
     elif page == 'Settings': native._settings_page(settings)
     elif page == 'Target Trial':
+        from phase1_web.plan_navigation import REVIEW_REQUEST_KEY, STEP_KEY, STEPS
+        review_requested = st.session_state.pop(REVIEW_REQUEST_KEY, False)
         st.subheader('Plan a new trial')
         st.caption('Describe a new Phase I trial. Doses and unknown clinical details can be left blank; historical outcomes are not requested.')
         path = native.STATE_ROOT / 'multidrug_target_draft.json'
@@ -258,7 +226,7 @@ def main(native):
             st.session_state.pop('trial_plan_step',None)
             for key in list(st.session_state):
                 if key.startswith('trial_plan_rule_'):st.session_state.pop(key,None)
-            for key in ('workflow_target_dlt','workflow_min_drug_similarity'):
+            for key in ('workflow_target_dlt','workflow_min_drug_similarity','workflow_min_clinical_coverage'):
                 st.session_state.pop(key,None)
         if rebase or 'multidrug_form_base' not in st.session_state:
             # Editor deltas always apply to a stable base until a mode/load change.
@@ -276,10 +244,13 @@ def main(native):
                 draft=render_draft(json.loads(st.session_state['multidrug_form_base']))
                 text=json.dumps(draft,ensure_ascii=False,indent=2)
             _validate_draft_shape(draft)
+            if draft.get('mapping_overrides'):
+                enforce_automatic_correspondence(st, native.STATE_ROOT, draft)
+                text=json.dumps(draft,ensure_ascii=False,indent=2)
             from phase1_extraction.clinical_protocol import planned_issues
             issues=planned_issues(draft,require_doses=False)
             previous_draft=json.loads(st.session_state['multidrug_target_text'])
-            for field,key in [('target_dlt','workflow_target_dlt'),('minimum_drug_similarity','workflow_min_drug_similarity')]:
+            for field,key in [('target_dlt','workflow_target_dlt'),('minimum_clinical_coverage','workflow_min_clinical_coverage')]:
                 if draft.get(field) != previous_draft.get(field):
                     st.session_state.pop(key,None)
             st.session_state['multidrug_target_text']=text
@@ -296,12 +267,17 @@ def main(native):
             for issue in issues:st.info(issue)
             invalidate_prediction(st.session_state)
             return
-        st.caption('Draft saved. Doses are optional for reviewing matching articles.')
-        if st.button('Continue to matching articles',type='primary'):
+        if review_requested:
             go_to(st,'Review evidence')
+        if advanced or st.session_state.get(STEP_KEY) != STEPS[-1]:
+            st.caption('Draft saved. You can review evidence now or continue adding plan details.')
+            if st.button('Review evidence with current plan',type='primary' if advanced else 'secondary'):
+                go_to(st,'Review evidence')
     elif page == 'Review evidence':
-        st.subheader('Review matching articles')
+        st.subheader('2. Review evidence')
         st.write('Choose the historical evidence to use for your planned trial. Doses are not required for this step.')
+        if st.button('Back to trial plan'):
+            go_to(st,'Target Trial')
         draft=json.loads(st.session_state['multidrug_target_text'])
         if not any(d.get('name','').strip() for d in draft.get('drugs',[])):
             st.info('Add a drug name or development code in Trial plan first.')
@@ -328,62 +304,45 @@ def main(native):
                         st.session_state['multidrug_preview']=preview_planned(library,draft,**config['query'])
             except (ValueError,RuntimeError,OSError) as error:st.error(str(error))
         if st.session_state.get('multidrug_preview') is None:
-            st.info('Find matching articles to see drug correspondence and abstracts.')
+            st.info('Find matching articles to review their original sources.')
             return
         candidates=st.session_state['multidrug_preview']['selected_series']
+        coverage_skips = [row for row in st.session_state['multidrug_preview'].get('diagnostics', {}).get('notices', [])
+                          if row.get('reason') == 'insufficient_clinical_coverage']
+        if coverage_skips:
+            st.caption(f"{len({row['document_id'] for row in coverage_skips})} article(s) have evidence groups below the coverage threshold; those groups were skipped before similarity comparison.")
         if not candidates:
-            st.info('No articles meet these filters. Broaden the candidate pool or add drug mechanism information.')
-        st.caption(f"{len({r['document_id'] for r in candidates})} candidate articles · {len(candidates)} study groups")
-        all_ids=[row['series_key'] for row in candidates]
-        scope_by_id={scope.scope_id:scope for scope in scopes}
-        scope_labels={r['series_key']:r['document_id']+' · '+r['label']+' · '+r['series_key'][-6:] for r in candidates}
-        with st.expander('Choose individual study groups (advanced)'):
-            included=st.multiselect('Included source model scopes',all_ids,default=all_ids,format_func=scope_labels.__getitem__,key='multidrug_included_'+selection_spec[:12])
-        from phase1_web.evidence_review import render_review
+            st.info('No articles meet these filters. Add missing clinical details or adjust the coverage threshold and candidate pool.')
+        from phase1_web.evidence_review import render_article_selection, render_review
+        included=render_article_selection(st,candidates,scopes,selection_spec)
         decisions,review_ready=render_review(st,candidates,scopes,native.STATE_ROOT,selection_spec,config['review_mode'],included_scope_ids=included,
-            target_drug_names={d['drug_id']:d['name'] for d in draft['drugs']})
+            target_drug_names={d['drug_id']:d['name'] for d in draft['drugs']},
+            library_source=native.LIBRARY_SOURCE if public else 'local',
+            workspace=native.WORKSPACE if public else None)
         new_review={'identity':selection_spec,'included':included,'decisions':decisions,'ready':review_ready}
         if new_review != st.session_state.get('multidrug_review_state'):
             activate_prediction(st.session_state,None)
             st.session_state['multidrug_results']={}
         st.session_state['multidrug_review_state']=new_review
-        with st.expander('Adjust drug correspondence (advanced)'):
-            st.caption('Automatic correspondence is the default. An explicit choice will also be used in prediction.')
-            if all_ids:
-                scope_id=st.selectbox('Source regimen to map',all_ids,format_func=scope_labels.__getitem__)
-                source=scope_by_id[scope_id]
-                names={d.model_drug_id:d.name for d in source.drugs}
-                old_pairs=draft.get('mapping_overrides',{}).get(scope_id,{})
-                chosen_pairs={}
-                for drug in draft['drugs']:
-                    options=[None,*names]
-                    old=old_pairs.get(drug['drug_id'])
-                    chosen=st.selectbox('Source for '+drug['name'],options,index=options.index(old) if old in options else 0,
-                        format_func=lambda value:'Automatic correspondence' if value is None else names[value],
-                        key='manual_'+scope_id+'_'+drug['drug_id']+'_'+selection_spec[:8])
-                    if chosen is not None:chosen_pairs[drug['drug_id']]=chosen
-                if st.button('Apply correspondence'):
-                    if len(set(chosen_pairs.values()))!=len(chosen_pairs):
-                        st.error('A source drug cannot be assigned to two target drugs.')
-                    else:
-                        data=copy.deepcopy(draft)
-                        data.setdefault('mapping_overrides',{})
-                        if chosen_pairs:data['mapping_overrides'][scope_id]=chosen_pairs
-                        else:data['mapping_overrides'].pop(scope_id,None)
-                        text=json.dumps(data,indent=2)
-                        st.session_state['multidrug_target_text']=text
-                        (native.STATE_ROOT/'multidrug_target_draft.json').write_text(text)
-                        st.session_state['multidrug_rebase_editor']=True
-                        invalidate_prediction(st.session_state)
-                        st.session_state.pop('multidrug_review_state',None)
-                        st.rerun()
-        with st.expander('Detailed comparison evidence'):
-            st.json(st.session_state['multidrug_preview'],expanded=False)
         if st.button('Continue to risk curves',type='primary',disabled=not review_ready):
             go_to(st,'Prediction Results')
     elif page == 'Prediction Results':
         st.subheader('Explore risks')
         existing=st.session_state.get('multidrug_prediction')
+        previous_method = next(iter((existing or {}).get('methods', {}).values()), {})
+        if (previous_method.get('backend') == 'single_drug_logistic'
+                and previous_method.get('synthesis') == 'target_power_prior'
+                and previous_method.get('power_prior_version') != POWER_PRIOR_VERSION):
+            activate_prediction(st.session_state, None)
+            st.session_state['multidrug_results'] = {}
+            existing = None
+            st.info('Historical likelihood now includes random intercepts and slopes. Generate a new prediction with your saved plan and evidence.')
+        if existing and next(iter(existing.get('methods', {}).values()), {}).get('backend',
+                existing.get('evidence_contract', {}).get('backend')) not in (None, 'single_drug_logistic'):
+            activate_prediction(st.session_state, None)
+            st.session_state['multidrug_results'] = {}
+            st.session_state.pop('multidrug_comparison_request', None)
+            existing = None
         if existing and not st.session_state.get('multidrug_comparison_request'):
             _prediction_output(existing,native)
             if st.button('Set up new risk exploration'):
@@ -399,7 +358,8 @@ def main(native):
         from phase1_web.guided_workflow import sync_exploration_units
         sync_exploration_units(st,draft)
         target=coordinate_editor(st,draft)
-        with st.expander('Analysis settings (optional)'):
+        with st.container():
+            st.subheader('Analysis settings')
             target_probability=st.number_input('Target DLT probability',min_value=.01,max_value=.99,value=float(draft.get('target_dlt',.25)),step=.01,key='workflow_target_dlt')
             if target is not None:target=target.model_copy(update={'target_dlt':target_probability})
             if draft.get('target_dlt') != target_probability:
@@ -409,42 +369,24 @@ def main(native):
                 (native.STATE_ROOT/'multidrug_target_draft.json').write_text(text)
                 st.session_state['workflow_saved_draft']=fingerprint(draft)
             st.caption('The desired toxicity rate for selecting a dose. This value carries into BOIN without re-entry.')
-            backend, construction = probability_model_controls(st)
-            power_settings = None
-            if construction=='Complete-regimen borrowing':
-                methods = {
-                    'Average of article posterior curves (Method 1)': 'same_article_joint_posterior_average',
-                    'Mixture of complete article posterior curves (Method 2)': 'same_article_joint_posterior_mixture',
-                    'Power prior from discounted historical data (Method 3)': 'target_power_prior',
-                }
-                aggregation=st.selectbox('Curve aggregation',list(methods),index=1,key='workflow_aggregation')
-                synthesis=methods[aggregation]
-            else:
-                methods = {
-                    'Average of assembled component curves (Method 1)': 'cross_article_component_assembly_average',
-                    'Mixture of assembled component curves (Method 2)': 'cross_article_component_assembly',
-                }
-                aggregation=st.selectbox('Curve aggregation',list(methods),index=1,key='workflow_component_aggregation')
-                synthesis=methods[aggregation]
-                st.caption('Each target drug can borrow a mapped component from a different article, including a single-drug study. A source combination contributes its jointly fitted components; its raw DLT counts are never treated as single-drug outcomes.')
-                st.caption('Interactions come from a shared source joint draw when available. Otherwise, they come from your selected prior. Both methods support a curve with one drug fixed or a two-drug surface.')
-                if synthesis == 'cross_article_component_assembly_average':
-                    st.caption('Method 1 averages complete assembled curves, keeping each source draw and each missing-interaction prior draw shared across recipes. Its intervals describe the average. Large recipe spaces use an explicitly reported 256-recipe approximation.')
-                else:
-                    st.caption('Method 2 samples one complete assembly per posterior curve, retaining variation between alternative assemblies. The same assembly is used at every dose on that curve.')
-            if synthesis == 'same_article_joint_posterior_average':
-                st.caption('Averages a complete posterior curve from each contributing article using fixed article weights. Its intervals describe the weighted average; they do not retain all between-article variation as the curve mixture does.')
-            if synthesis == 'target_power_prior':
-                st.caption('Fits a separate target model from original cohort DLT/N. Uses one best complete scope per article, fixed similarity discounts and between-article variation. Source article fits remain unchanged. The first target fit can take time; identical settings and new plot coordinates reuse its cache.')
+            model_drugs = target.drugs if target is not None else draft['drugs']
+            focal_id = (target.profile.get('single_drug_analysis', {}).get('focal_drug_id') if target is not None
+                        else (st.session_state.get('explore_axes') or [None])[0])
+            from phase1_web.model_formulas import render_aggregation, target_combination
+            combination = target_combination(target) if target is not None else (False if len(model_drugs) == 1 else None)
+            backend, construction = probability_model_controls(st, model_drugs, focal_id, combination=combination)
+            synthesis = render_aggregation(st, combination=combination)
             from phase1_web.prior_settings import render_prior_settings
             try:
-                selected_prior, power_settings, _prior_choice = render_prior_settings(st, backend, synthesis, native.STATE_ROOT)
+                selected_prior, power_settings, _prior_choice = render_prior_settings(
+                    st, backend, synthesis, native.STATE_ROOT, drug_count=len(model_drugs),
+                    drug_modes=[getattr(d, 'mode', None) or d.get('mode', 'numeric') for d in model_drugs],
+                    combination=combination)
             except (ValueError, OSError) as error:
                 invalidate_prediction(st.session_state)
                 st.error('Check the prior settings: ' + str(error))
                 return
             draw_count=st.number_input('Target joint draws',100,5000,1000,100,key='workflow_draw_count')
-        st.caption('Curve method: '+prediction_result_label(prediction_result_key(backend,synthesis,prior=selected_prior)))
         config=evidence_settings(st)
         selection_spec=sync_evidence_selection(st,draft,config,context)
         included,decisions,review_ready=evidence_state(st,selection_spec,config['review_mode'])
@@ -456,26 +398,10 @@ def main(native):
             st.caption(f"Evidence selected: {len(doc_ids)} articles · " + ('Abstract review' if config['review_mode'] else 'Automatic inclusion'))
         else:
             st.info('No evidence list has been previewed. Automatic inclusion will find articles using your saved filters when you generate a prediction.' if not config['review_mode'] else 'Complete article review before generating a prediction.')
-        if st.button('Change articles or matching settings'):go_to(st,'Review evidence')
         if target is None:
             activate_prediction(st.session_state,None)
             st.session_state['multidrug_results']={}
             return
-        if synthesis=='target_power_prior' and st.session_state.get('multidrug_preview') and review_ready:
-            from phase1_web.evidence_review import power_prior_review_preview
-            from phase1_prediction.multidrug.power_prior import PowerPriorSpec
-            try:
-                rows=[r for r in st.session_state['multidrug_preview']['selected_series'] if r['series_key'] in included]
-                checked=power_prior_review_preview(rows,scopes,target,PowerPriorSpec.model_validate(power_settings),decisions)
-                review_ready=review_ready and checked['ready']
-                with st.expander('Method 3 historical contributions'):
-                    st.dataframe(checked['rows'],hide_index=True)
-                    st.caption('Method 3 uses absolute likelihood powers, not normalized article weights. Unsure halves an article contribution; Exclude removes it without redistributing its pre-review budget.')
-                    st.caption(f"Discounted patient count: {checked['discounted_patient_count']:.4g} (a borrowing budget, not an exact effective sample size).")
-                    if checked['excluded']:st.dataframe(checked['excluded'],hide_index=True)
-                if not checked['ready']:st.info('No selected article is usable for Method 3 at these settings. Review its exclusions above.')
-            except (ValueError,RuntimeError) as error:
-                st.error(str(error));review_ready=False
         if public:
             st.caption('Compatible published article posteriors are reused automatically. Missing fits are queued; target-specific calculations stay private to this session.')
         else:
@@ -487,7 +413,7 @@ def main(native):
                         review_ready, key='target_prior_cache_' + backend, selected_prior=selected_prior, scopes=scopes)
                 else:
                     render_source_cache(st, scopes, backends=(backend,), allow_backend_selection=False,
-                        key='target_source_cache_' + backend, selected_prior=selected_prior)
+                        key='target_source_cache_' + backend, selected_prior=selected_prior, target=target)
         comparison_spec = fingerprint([selection_spec,target.model_dump(mode='json'),draw_count,sorted(included),decisions])
         if comparison_spec != st.session_state.get('multidrug_comparison_request'):
             st.session_state['multidrug_results']={}
@@ -504,7 +430,7 @@ def main(native):
                 progress.info(f'{done}/{total} · {article} · {model} · checking cache / fitting if needed')
             try:
                 if st.session_state.get('multidrug_preview') and not included:
-                    raise ValueError('Select at least one source scope or preview the candidates again.')
+                    raise ValueError('Select at least one article or find matching articles again.')
                 options = dict(backend=backend,synthesis=synthesis,threshold=threshold,weights=weights,
                     top_articles=top,include_series_keys=included,draw_count=int(draw_count),
                     relevance_decisions=decisions,power_prior=power_settings,prior=selected_prior,
@@ -530,9 +456,11 @@ def main(native):
     elif page == 'OC Simulation':
         result = st.session_state.get('multidrug_prediction')
         if not result: st.info('Generate a target prediction first.'); return
-        st.write('Choose an ordered regimen path for BOIN. Each virtual trial uses one complete joint posterior risk curve.')
-        from phase1_web.multidrug_state import simulation_view
-        with st.expander('Actual candidate doses for BOIN',expanded=True):
+        st.subheader('Simulate a trial')
+        st.write('BOIN uses your candidate doses in increasing order. Each virtual trial uses one complete posterior risk curve.')
+        from phase1_web.multidrug_state import simulation_view, automatic_boin_path
+        with st.container(border=True):
+            st.markdown('**Candidate doses**')
             from phase1_web.curve_explorer import boin_candidate_editor
             try:
                 candidates=boin_candidate_editor(st,result,rebase=previous_page!='OC Simulation')
@@ -548,74 +476,91 @@ def main(native):
                         activate_prediction(st.session_state,new,recomputed=True)
                         st.session_state['multidrug_results']={new['evidence_contract']['backend']:new}
                         st.rerun()
-                    st.info('Evaluate these candidate doses before selecting the BOIN path.');return
-                st.caption('These candidate regimens are already evaluated. Choose the BOIN path below; editing doses is optional.')
+                    st.info('Evaluate these candidate doses before running a simulation.');return
+                st.caption('These candidate doses are already evaluated.')
             except (ValueError,OSError,RuntimeError) as error:st.info(str(error));return
         target=result['target']
         if target.get('profile',{}).get('planning',{}).get('exploration',{}).get('relative'):
             st.info('Enter and evaluate actual candidate doses above before BOIN.');return
-        names={d['drug_id']:d['name'] for d in target['drugs']}
-        labels={p['level_id']:p['level_id']+' · '+', '.join(f"{names[k]}: {v if v is not None else 'used, dose unknown'}" for k,v in p['doses'].items()) for p in target['points']}
-        path_ids=st.multiselect('BOIN path: select regimens in exploration order',list(labels),default=target.get('path_level_ids',[]),format_func=lambda x:labels[x],key='simulation_path_'+result['run_id'])
-        st.caption('Selection order defines the path. No toxicity ordering is inferred from a two-dimensional grid.')
+        try:
+            path_ids=automatic_boin_path(target)
+        except ValueError as error:
+            st.info(str(error));return
+        by_id={point['level_id']:point for point in target['points']}
+        numeric=[d for d in target['drugs'] if d['mode']=='numeric']
+        focal_id=target.get('profile',{}).get('single_drug_analysis',{}).get('focal_drug_id')
+        focal=next((d for d in numeric if d['drug_id']==focal_id), None)
+        focal=focal or next((d for d in numeric if len({p['doses'][d['drug_id']] for p in target['points']})>1), numeric[0])
+        dose_order=' → '.join(f"{by_id[level]['doses'][focal['drug_id']]:g}" for level in path_ids)
+        st.markdown('**Dose order:** ' + dose_order + ' ' + focal['unit'])
         path_key=fingerprint([result['run_id'],path_ids])
         if st.session_state.get('simulation_path_identity')!=path_key:
             clear_dependents(st.session_state)
             st.session_state['simulation_path_identity']=path_key
-        if len(path_ids)<2:
-            st.info('Select at least two candidate regimens to configure BOIN. Prediction does not require a path.')
-            return
         simulation_input=simulation_view(result,path_ids)
-        st.subheader('Shared simulation settings')
+        mode=st.radio('Simulation task', ['Simulate one design', 'Compare multiple designs'],
+                      horizontal=True, key='boin_design_task')
+        st.caption('One design uses one sample size and cohort size. Multiple designs compare combinations of these settings using the same simulated risk scenarios.')
+        st.subheader('Simulation settings')
         if public:
             st.caption('Public calculations allow up to 20,000 trials per design and 50,000 across a design comparison.')
         st.caption(f"Applies to Run BOIN and Compare designs. Target DLT probability: {result['target']['target_dlt']:.2f}, inherited from the trial plan.")
         m=st.number_input('Posterior scenarios',1,1000,100,key='boin_design_scenarios')
         repetitions=st.number_input('Trials per scenario',1,1000,100,key='boin_design_repetitions')
-        with st.expander('Shared BOIN decision and stopping rules',expanded=True):
+        with st.container(border=True):
+            st.markdown('**BOIN decision and stopping rules**')
             elimination=st.number_input('Overtoxicity elimination probability',.5,.999,.95,.01,key='boin_design_elimination')
             stopping=st.number_input('Patients at one regimen before stopping',3,100,12,3,key='boin_design_stopping')
             if st.session_state.get('boin_design_start',1)>len(path_ids):
                 st.session_state['boin_design_start']=len(path_ids)
-            start_index=st.number_input('Starting path position (1-based)',1,len(path_ids),1,key='boin_design_start')
+            start_index=st.number_input('Starting dose level (1 = lowest dose)',1,len(path_ids),1,key='boin_design_start')
             low=st.number_input('Acceptable DLT probability: lower bound',.0,.99,.20,.01,key='boin_design_low')
             high=st.number_input('Acceptable DLT probability: upper bound',.01,1.,.35,.01,key='boin_design_high')
-        st.subheader('Run one BOIN design')
-        nmax=st.number_input('Maximum sample size',6,300,30,3,key='boin_design_nmax')
-        cohort=st.number_input('Patients per cohort',1,12,3,key='boin_design_cohort')
-        boin_settings=BoinSettings(target_dlt=result['target']['target_dlt'],max_sample_size=int(nmax),cohort_size=int(cohort),
-            elimination_cutoff=elimination,stop_rule_m=int(stopping),start_index=int(start_index)-1,
-            acceptable_low=low,acceptable_high=high)
-        simulation_request=fingerprint([path_key,asdict(boin_settings),m,repetitions])
-        if st.session_state.get('multidrug_simulation_request')!=simulation_request:
-            st.session_state.pop('multidrug_simulation',None)
-            st.session_state['multidrug_simulation_request']=simulation_request
-        if st.button('Run BOIN'):
-            try:
-                with st.spinner('Simulating'):
-                    options = dict(method_key=next(iter(result['methods'])), settings=boin_settings,
-                        posterior_curve_count=int(m), trials_per_curve=int(repetitions))
-                    if public:
-                        from phase1_web.jobs import run_task
-                        sim = run_task('simulate', {'prediction':simulation_input,
-                            'options':{**options, 'settings':asdict(boin_settings)}}, native.WORKSPACE)
-                    else:
-                        sim=simulate_regimen_path(simulation_input,**options)
-                st.session_state['multidrug_simulation']=sim
-            except (ValueError, RuntimeError) as error: st.error(str(error))
-        if st.session_state.get('multidrug_simulation'):
-            sim=st.session_state['multidrug_simulation']
-            st.json({k:v for k,v in sim.items() if k not in {'trials','draw_provenance','per_scenario'}}, expanded=False)
-            native._json_download('Download simulation',sim,sim['run_id']+'.json')
-        with st.expander('Compare BOIN designs'):
-            st.caption('Choose sample sizes and cohort sizes to compare using the shared settings above.')
+        common_request=fingerprint([path_key, elimination, stopping, start_index, low, high, m, repetitions])
+        previous_common=st.session_state.get('boin_design_common_request')
+        if previous_common is not None and previous_common!=common_request:
+            clear_dependents(st.session_state)
+        st.session_state['boin_design_common_request']=common_request
+        if mode=='Simulate one design':
+            st.subheader('Run one BOIN design')
+            nmax=st.number_input('Maximum sample size',6,300,30,3,key='boin_design_nmax')
+            cohort=st.number_input('Patients per cohort',1,12,3,key='boin_design_cohort')
+            boin_settings=BoinSettings(target_dlt=result['target']['target_dlt'],max_sample_size=int(nmax),cohort_size=int(cohort),
+                elimination_cutoff=elimination,stop_rule_m=int(stopping),start_index=int(start_index)-1,
+                acceptable_low=low,acceptable_high=high)
+            simulation_request=fingerprint([path_key,asdict(boin_settings),m,repetitions])
+            if st.session_state.get('multidrug_simulation_request')!=simulation_request:
+                st.session_state.pop('multidrug_simulation',None)
+                st.session_state['multidrug_simulation_request']=simulation_request
+            if st.button('Run BOIN'):
+                try:
+                    with st.spinner('Simulating'):
+                        options = dict(method_key=next(iter(result['methods'])), settings=boin_settings,
+                            posterior_curve_count=int(m), trials_per_curve=int(repetitions))
+                        if public:
+                            from phase1_web.jobs import run_task
+                            sim = run_task('simulate', {'prediction':simulation_input,
+                                'options':{**options, 'settings':asdict(boin_settings)}}, native.WORKSPACE)
+                        else:
+                            sim=simulate_regimen_path(simulation_input,**options)
+                    st.session_state['multidrug_simulation']=sim
+                except (ValueError, RuntimeError) as error: st.error(str(error))
+            if st.session_state.get('multidrug_simulation'):
+                sim=st.session_state['multidrug_simulation']
+                from phase1_web.results_view import render_simulation
+                render_simulation(st, result, sim)
+        else:
+            st.subheader('Compare BOIN designs')
+            st.caption('Choose two or more combinations of sample size and cohort size to compare.')
             cohorts=st.multiselect('Candidate cohort sizes',[1,2,3,4,6],[3],key='boin_design_search_cohorts')
             sizes=st.multiselect('Candidate maximum sample sizes',[12,18,24,30,36,42,48,60],[30,36],key='boin_design_search_sizes')
             search_request=fingerprint([path_key,cohorts,sizes,elimination,stopping,start_index,low,high,m,repetitions])
             if st.session_state.get('multidrug_search_request')!=search_request:
                 st.session_state.pop('multidrug_search',None)
                 st.session_state['multidrug_search_request']=search_request
-            if st.button('Compare designs'):
+            design_count=len(cohorts)*len(sizes)
+            st.caption(f'{design_count} designs selected.')
+            if st.button('Compare designs', disabled=design_count<2):
                 try:
                     with st.spinner('Comparing designs using the same posterior scenarios and random seed'):
                         options = dict(method_key=next(iter(result['methods'])),
@@ -633,8 +578,14 @@ def main(native):
                 except (ValueError,RuntimeError) as error:st.error(str(error))
             if st.session_state.get('multidrug_search'):
                 search=st.session_state['multidrug_search']
-                st.dataframe([{k:v for k,v in r.items() if k!='result'} for r in search['ranked']],hide_index=True)
-                native._json_download('Download design comparison',search,'boin_comparison.json')
+                from phase1_web.results_view import render_design_comparison
+                render_design_comparison(st, result, search)
+        if st.button('Continue to downloads', type='primary'):
+            go_to(st, 'Download results')
+    elif page == 'Download results':
+        from phase1_web.results_view import render_downloads
+        render_downloads(st, st.session_state.get('multidrug_prediction'),
+                         st.session_state.get('multidrug_simulation'), st.session_state.get('multidrug_search'))
     elif page == 'Saved analyses':
         records=list_analyses(native.STATE_ROOT)
         if not records: st.info('No saved analyses yet.'); return
@@ -644,6 +595,8 @@ def main(native):
         record=load_analysis(Path(records[chosen]['path']))
         if record.get('prediction',{}).get('model_version') in {'v3_multidrug_bayes_1', VERSION}:
             _result(record['prediction'],native)
+            from phase1_web.results_view import render_downloads
+            render_downloads(st, record['prediction'], record.get('simulation'), record.get('design_comparison'),
+                             key='saved_results_' + record['analysis_id'])
         else:
-            st.json(record,expanded=False)
-        native._json_download('Download saved analysis',record,record['analysis_id']+'.json')
+            st.info('This older analysis format is retained. Generate a new prediction to use the current report export.')

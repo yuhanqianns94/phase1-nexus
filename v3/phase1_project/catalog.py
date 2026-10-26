@@ -91,7 +91,8 @@ def build_catalog(
             curve_rows=str(paths.curve_rows) if paths else None,
             xml_path=xml.get(document_id), pdf_path=pdf.get(document_id),
             material_paths=tuple(material_paths),
-            source_url=f"https://pmc.ncbi.nlm.nih.gov/articles/{document_id}/" if re.fullmatch(r"PMC\d+", document_id) else None,
+            source_url=(f"https://pmc.ncbi.nlm.nih.gov/articles/{document_id}/" if re.fullmatch(r"PMC\d+", document_id)
+                        else f"https://pubmed.ncbi.nlm.nih.gov/{document_id[4:]}/" if re.fullmatch(r"PMID\d+", document_id) else None),
             extraction_status="ready" if paths else "awaiting_v3_extraction",
         ))
     identity = [asdict(item) for item in articles]

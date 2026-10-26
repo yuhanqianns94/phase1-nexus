@@ -12,7 +12,7 @@ from pathlib import Path
 from phase1_extraction.artifacts import read_json, sha256_file
 from phase1_extraction.dose_units import dose_unit_for_value
 from phase1_extraction.drug_ordering import entity_key, ordered_catalog, clinical_payload
-from phase1_extraction.models import CohortExposure, CurveRow, ReportedExtraction
+from phase1_extraction.models import CohortExposure, CurveRow, ReportedExtraction, POLICY_VERSION, has_retired_r3_provenance
 from phase1_prediction.evidence import discover_article_paths
 from phase1_prediction.profiles import exposure_profile, extraction_profile
 from .grouping import group_rows
@@ -76,6 +76,8 @@ def outcome_reasons(row, evidence_policy):
     # The dedicated field can carry newer outcome-only exclusions that are not
     # duplicated in the legacy scalar-curve exclusion list.
     reasons = list(row.outcome_exclusion_reasons)
+    if has_retired_r3_provenance(row) and "retired_r3_denominator" not in reasons:
+        reasons.append("retired_r3_denominator")
     if row.n is None or row.y is None or row.n <= 0 or not 0 <= row.y <= row.n:
         reasons.append("missing_or_invalid_binomial_counts")
     # Outcome validity is separate from scalar dose eligibility.
@@ -83,7 +85,7 @@ def outcome_reasons(row, evidence_policy):
         if any(word in reason.casefold() for word in ("denominator", "numerator", "not actual", "not used", "overlap", "not evaluable")):
             if reason not in reasons:
                 reasons.append(reason)
-    if evidence_policy == "reported_only" and any(rule in {"R1", "R2", "R3"} for rule in row.rule_ids):
+    if evidence_policy == "reported_only" and any(rule in {"R1", "R2"} for rule in row.rule_ids):
         reasons.append("not_reported_only")
     return reasons
 
@@ -250,6 +252,7 @@ def build_article_scopes(paths, *, evidence_policy="project_default", review_pol
                                  lineage={"root": str(paths.root), "scope_key": list(key),
                                           "series_ids": sorted({r.series_id for r in members}),
                                           "evidence_policy": evidence_policy, "review_policy": review_policy,
+                                          "extraction_policy": POLICY_VERSION,
                                           **({"grouping":grouping_audit,"arm_ids":grouping_audit["arm_ids"]} if grouping_audit else {})}))
     return scopes, all_notices
 

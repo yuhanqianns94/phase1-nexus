@@ -5,7 +5,7 @@ import json
 import pytest
 
 from phase1_acquisition.screening import (
-    CRITERIA, CURRENT_PROMPT, DLTDecision, DLT_POLICIES, DLT_POLICY_VERSION, DLT_PROMPT,
+    CRITERIA, CURRENT_PROMPT, DLTDecision, DLT_POLICIES, DLT_POLICY_VERSION, DLT_PROMPT, DRUG_POLICY_VERSION, DRUG_PROMPT,
     EFFORT, LEGACY_CRITERIA, LEGACY_POLICY_VERSION, MODEL, POLICY_VERSION,
     REFERENCE_POLICY_VERSION, SUPPORTIVE_CARE_POLICY_VERSION,
     build_document, is_excluded, is_retained, make_request, validate_decision,
@@ -30,7 +30,7 @@ def current_response(doc, *, keep=True):
             "output": [{"type": "message", "content": [{"type": "output_text", "text": json.dumps(value)}]}]}
 
 
-@pytest.fixture(params=[DLT_POLICY_VERSION, POLICY_VERSION], ids=["frozen_v4", "current_v5"])
+@pytest.fixture(params=[DLT_POLICY_VERSION, DRUG_POLICY_VERSION, POLICY_VERSION], ids=["frozen_v4", "frozen_v5", "current_v6"])
 def current_document(tmp_path, request):
     doc = document(tmp_path)
     doc["policy_version"] = request.param
@@ -42,6 +42,7 @@ def current_document(tmp_path, request):
     (REFERENCE_POLICY_VERSION, "beca0cc114b5bce31de26e7da9faacbcbc44851e41838ebb446b2c34204bfbe9"),
     (SUPPORTIVE_CARE_POLICY_VERSION, "5b1053b592c8db2c973bb12cfa20ae972a2520e17bad35b050befb3bb1fec331"),
     (DLT_POLICY_VERSION, "879b2e70067af331a88e33ce6d973773947c110eb634215edb67a57b65796f08"),
+    (DRUG_POLICY_VERSION, "337456c39bf58e630f6fab97c9d729a0f1d44f5b2081ea2af54807ccefa3d774"),
 ])
 def test_all_legacy_request_bodies_keep_their_pre_migration_hash(policy, digest):
     doc = {"document_id": "PMID1", "policy_version": policy,
@@ -52,7 +53,7 @@ def test_all_legacy_request_bodies_keep_their_pre_migration_hash(policy, digest)
 
 def test_dlt_policies_have_english_binary_decisions_and_preserve_wire_schema(current_document):
     request = make_request(current_document)
-    expected_prompt = DLT_PROMPT if current_document["policy_version"] == DLT_POLICY_VERSION else CURRENT_PROMPT
+    expected_prompt = {DLT_POLICY_VERSION: DLT_PROMPT, DRUG_POLICY_VERSION: DRUG_PROMPT, POLICY_VERSION: CURRENT_PROMPT}[current_document["policy_version"]]
     assert request["instructions"] == expected_prompt
     schema = request["text"]["format"]["schema"]
     assert schema["properties"]["decision"]["enum"] == ["retain", "exclude"]
@@ -70,7 +71,7 @@ def test_drug_scope_migration_changes_only_versioned_article_and_prompt(current_
     prior_request = make_request(prior_document)
     latest_request = make_request(latest_document)
 
-    assert DLT_POLICIES == {DLT_POLICY_VERSION, POLICY_VERSION}
+    assert DLT_POLICIES == {DLT_POLICY_VERSION, DRUG_POLICY_VERSION, POLICY_VERSION}
     assert DLT_POLICY_VERSION != POLICY_VERSION
     assert prior_request["instructions"] != latest_request["instructions"]
     for key in prior_request.keys() - {"instructions", "input"}:

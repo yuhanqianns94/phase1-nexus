@@ -20,11 +20,11 @@ from test_multidrug_power_prior import article
 from test_multidrug_transport import fixture
 
 
-def test_product_formula_first_three_interactions_zero_baseline_and_negative_derivative():
+def test_product_formula_all_pairwise_interactions_zero_baseline_and_negative_derivative():
     r = jnp.array([[0., 0., 0., 0.], [2., 3., 4., 5.]])
     basis = np.asarray(product_interaction_basis(r))
-    np.testing.assert_allclose(basis, [[0., 0., 0., 0.], [6., 8., 12., 24.]])
-    alpha, slopes, eta = -3., jnp.log(jnp.array([.5, .6, .7, .8])), jnp.array([.1, -.2, .3, -.1])
+    np.testing.assert_allclose(basis, [[0., 0., 0., 0., 0., 0.], [6., 8., 10., 12., 15., 20.]])
+    alpha, slopes, eta = -3., jnp.log(jnp.array([.5, .6, .7, .8])), jnp.array([.1, -.2, .3, -.1, .2, -.3])
     actual = product_logistic_risk(alpha, slopes, r, eta)
     np.testing.assert_allclose(actual, expit(alpha + np.asarray(r) @ np.exp(slopes) + basis @ eta))
     assert float(actual[0]) == pytest.approx(expit(alpha))
@@ -73,15 +73,16 @@ def test_background_has_estimated_main_effect_and_absent_state_retains_shared_in
         assert actual == pytest.approx(binom.logpmf(scope.observations[i].y, 10, probability))
 
 
-def test_source_prior_arrays_and_cache_identity_separate_probability_models():
-    scope, _, _, _ = fixture(3)
+@pytest.mark.parametrize('k', [1, 2, 3, 4])
+def test_source_prior_arrays_and_cache_identity_separate_probability_models(k):
+    scope, _, _, _ = fixture(k)
     prior = canonical_prior(risk_prior_preset('regularized', 'logistic_product'), 'logistic_product')
     sampler = SamplerSpec(samples=4, warmup=1)
     arrays, diagnostics = fit_source(scope, 'logistic_product', prior, sampler)
     assert diagnostics['status'] == 'prior_only'
     assert arrays['alpha'].shape == (2, 4)
-    assert arrays['log_b'].shape == (2, 4, 3)
-    assert arrays['eta'].shape == (2, 4, 4)
+    assert arrays['log_b'].shape == (2, 4, k)
+    assert arrays['eta'].shape == (2, 4, k*(k-1)//2)
     assert 'a' not in arrays
     assert source_fit_id(scope, 'logistic_product', prior, sampler) != source_fit_id(scope, 'logistic', prior, sampler)
 

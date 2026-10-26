@@ -528,6 +528,7 @@ def phase_editor(original,key):
 
 def blank_target():
     return {'version':'target_regimen_v1','name':'New trial','target_dlt':.25,'drugs':[],
+            'minimum_clinical_coverage':.2, 'minimum_drug_similarity':0.,
             'points':[],'path_level_ids':[],'profile':{'planning':{'version':PROTOCOL_VERSION}}}
 
 
@@ -676,6 +677,16 @@ def _grading_editor(dlt):
         dlt['grading']=' '.join(part for part in parts if part) or None
         dlt['grading_system']=system_code
         dlt['grading_version']=version_code if version_code not in (None,'other') else version
+
+
+def _summary_dose(point, drug, state):
+    if state == 'Use: dose specified':
+        dose = point.get('doses', {}).get(drug['drug_id'])
+        if dose is None:
+            return 'Dose not entered'
+        return f"{dose:g} {drug.get('unit') or '(unit not selected)'}"
+    return {'Use: dose unknown': 'Used; dose unknown',
+            'Do not use': 'Not used', 'Undecided': 'Use not decided'}.get(state, state)
 
 
 def render_draft(initial):
@@ -939,8 +950,8 @@ def render_draft(initial):
                 st.session_state[key]=st.session_state[key]
         st.rerun()
     with pages[5]:
-        st.markdown('### Review your trial plan')
-        st.write(f"**{draft['name']}** — "+' + '.join(d['name'] or 'Unnamed drug' for d in draft.get('drugs',[])))
+        st.markdown('### Trial plan summary')
+        st.write(f"**{draft['name']}**")
         population=profile.get('population',{})
         st.write('Disease: '+('; '.join(population.get('disease',[])) or 'Not specified'))
         for drug in draft.get('drugs',[]):
@@ -954,13 +965,15 @@ def render_draft(initial):
         if not population.get('disease'):missing.append('disease')
         if not profile.get('dlt',{}).get('criteria'):missing.append('DLT criteria')
         if window.get('kind') not in {'formal_dlt','safety_monitoring'}:missing.append('assessment-window purpose')
-        if missing:st.caption('Clinical information not specified: '+', '.join(missing)+'. These values are not imputed and do not receive a similarity score.')
+        if missing:st.caption('Details you can add later: '+', '.join(missing)+'. Matching will use the clinical information provided.')
         if draft.get('points'):
-            st.dataframe([{'Regimen':p['level_id'],**{d['name'] or d['drug_id']:(f"{p['doses'].get(d['drug_id'])} {d.get('unit') or ''}" if states[p['level_id']].get(d['drug_id'])=='Use: dose specified' else states[p['level_id']].get(d['drug_id'],'Not entered')) for d in draft['drugs']}} for p in draft['points']],hide_index=True)
+            st.dataframe([{'Regimen':p['level_id'],**{d['name'] or d['drug_id']:_summary_dose(p,d,states.get(p['level_id'],{}).get(d['drug_id'],'Not entered')) for d in draft['drugs']}} for p in draft['points']],hide_index=True)
         issues=planned_issues(draft,require_doses=False)
         if issues:st.info('Before reviewing evidence: '+' '.join(issues))
-        else:st.success('Ready to review evidence. You can add more clinical details at any time.')
-    show_step_buttons()
+        else:
+            st.success('Plan saved. Next, review matching articles.')
+            st.caption('Compare your plan with historical studies, set similarity filters and choose the evidence to use.')
+    show_step_buttons(review_ready=not issues)
     return draft
 
 

@@ -38,17 +38,24 @@ def numerical_dependencies():
 def engine_hash():
     here = Path(__file__).parent
     sources={name: hashlib.sha256((here / name).read_bytes()).hexdigest()
-             for name in ("math.py", "fitting.py", "contracts.py")}
+             for name in ("math.py", "fitting.py", "contracts.py", "single_drug.py")}
     return fingerprint({'sources':sources,'dependencies':numerical_dependencies()})
 
 
 def source_fit_id(scope, backend, prior, sampler):
+    _validate_denominators(scope)
     from .prior_presets import canonical_prior
     prior = canonical_prior(prior, backend)
     source = scope.model_dump(mode="json")
     source["lineage"].pop("root", None)
     return "fit_" + fingerprint({"scope": source, "backend": backend, "prior": prior.model_dump(),
                                  "sampler": sampler.model_dump(), "version": VERSION, "engine": engine_hash()})[:32]
+
+
+def _validate_denominators(scope):
+    from phase1_extraction.models import has_retired_r3_provenance
+    if any(has_retired_r3_provenance(observation.provenance) for observation in scope.observations):
+        raise ValueError("Retired R3 denominators cannot be used in source posteriors; rebuild the scope from source-supported counts")
 
 
 class PosteriorStore:
@@ -74,6 +81,7 @@ class PosteriorStore:
         with np.load(path, allow_pickle=False) as z:
             arrays = {k: z[k] for k in z.files}
         scope = ModelScope.model_validate(json.loads((directory / "scope.json").read_text()))
+        _validate_denominators(scope)
         if manifest.get('scope_sha256') and hashlib.sha256((directory/'scope.json').read_bytes()).hexdigest()!=manifest['scope_sha256']:
             raise ValueError('Source scope checksum mismatch')
         if not manifest.get('scope_sha256') and manifest.get('engine_hash') and manifest.get('prior') and manifest.get('sampler'):
@@ -84,6 +92,7 @@ class PosteriorStore:
         return scope, arrays, manifest
 
     def save(self, fit_id, scope, arrays, manifest):
+        _validate_denominators(scope)
         validate_backend(manifest.get('backend', 'logistic'))
         self.root.mkdir(parents=True, exist_ok=True)
         final = self.root / fit_id

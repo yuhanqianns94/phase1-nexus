@@ -1,6 +1,6 @@
 """One-to-one drug-evidence matching with explicit dose transport.
 
-Research/treatment roles remain provenance, not similarity evidence.
+Research roles set candidate priority; clinical similarity remains a separate score.
 """
 from __future__ import annotations
 
@@ -11,7 +11,7 @@ from scipy.optimize import linear_sum_assignment
 from phase1_prediction.profile_similarity import drug_affinity, drug_identity, drug_pair, drug_correspondence, compare_mapped_profiles
 from .contracts import fingerprint
 
-MATCHING_POLICY = 'semantic_one_to_one_drug_evidence_v6'
+MATCHING_POLICY = 'automatic_primary_first_clinical_coverage_v8'
 
 
 def target_profile(target):
@@ -24,27 +24,59 @@ def target_profile(target):
     return profile
 
 
+def coverage_target_profile(target):
+    """Keep all planned companions in the information gate for a focal curve."""
+    if hasattr(target, 'coverage_profile'):
+        return target.coverage_profile
+    projection = target.profile.get('single_drug_projection')
+    if projection:
+        from types import SimpleNamespace
+        original = SimpleNamespace(profile=projection['original_profile'],
+            drugs=[SimpleNamespace(**drug) for drug in projection['original_drugs']])
+        return target_profile(original)
+    return target_profile(target)
+
+
 def match_target(target, scope, *, weights=None):
     tp = target_profile(target)
+    from phase1_prediction.clinical_coverage import clinical_coverage
+    minimum = getattr(target, 'minimum_clinical_coverage', 0.)
+    source_profile = scope.lineage.get('single_drug_projection', {}).get('original_profile', scope.profile)
+    coverage = clinical_coverage(coverage_target_profile(target), source_profile, weights=weights) if minimum > 0 else None
+    if coverage is not None and coverage['coverage'] + 1e-12 < minimum:
+        # Return before correspondence, similarity or lazy embedding evaluation.
+        payload = {'scope_id': scope.scope_id, 'document_id': scope.document_id,
+            'matching_policy': MATCHING_POLICY, 'pairs': {}, 'details': [], 'rejected_pairs': [],
+            'unmatched_target_ids': [drug.drug_id for drug in target.drugs],
+            'removed_source_ids': [drug.model_drug_id for drug in scope.drugs],
+            'clinical_coverage': coverage, 'minimum_clinical_coverage': minimum,
+            'comparison_skipped': 'insufficient_clinical_coverage',
+            'score': {'similarity': None, 'field_scores': {}, 'groups': {}, 'weights': coverage['weights']}}
+        payload['mapping_id'] = fingerprint(payload)
+        return payload
     td = tp['configurations'][0]['drugs']
-    sd = [{**d.profile, 'research_role':d.research_role} for d in scope.drugs]
+    sd = [{**d.profile, 'name': d.name, 'model_drug_id': d.model_drug_id,
+           'research_role':d.research_role} for d in scope.drugs]
     matrix = np.zeros((len(td), len(sd) + len(td)))
     raw_scores = np.array([[drug_affinity(a, b) for b in sd] for a in td])
     correspondence = [[drug_correspondence(a,b,target.minimum_drug_similarity) for b in sd] for a in td]
+    primary = [drug.research_role in {'primary', 'co_primary'} for drug in scope.drugs]
+    # Lexicographic assignment: eligible main-study drugs first, then identity,
+    # then drug features. A role never makes an unsupported drug eligible.
+    identity_bonus = len(td) + 1
+    primary_bonus = identity_bonus ** 2
     overrides = target.mapping_overrides.get(scope.scope_id, {})
     if len(set(overrides.values())) != len(overrides) or not set(overrides) <= {d.drug_id for d in target.drugs} or not set(overrides.values()) <= {d.model_drug_id for d in scope.drugs}:
         raise ValueError('Invalid target mapping override')
     for i, a in enumerate(td):
         for j, b in enumerate(sd):
-            # Research order controls model slots, not which drugs may correspond.
-            # Non-drug context cannot establish a usable component.
-            # Explicit mappings may opt in.
             eligible = correspondence[i][j]['eligible']
             if target.drugs[i].drug_id in overrides:
                 eligible = overrides[target.drugs[i].drug_id] == scope.drugs[j].model_drug_id
             if scope.drugs[j].model_drug_id in overrides.values() and overrides.get(target.drugs[i].drug_id) != scope.drugs[j].model_drug_id:
                 eligible = False
-            matrix[i, j] = (raw_scores[i, j] + (len(td) + 1) * (drug_identity(a, b) == 1) + 1e-9) if eligible else -1e9
+            matrix[i, j] = (primary_bonus * primary[j] + identity_bonus * (drug_identity(a, b) == 1)
+                            + raw_scores[i, j] + 1e-9) if eligible else -1e9
     ri, ci = linear_sum_assignment(matrix, maximize=True)
     pairs, details = {}, []
     for i, j in zip(ri, ci):
@@ -56,7 +88,8 @@ def match_target(target, scope, *, weights=None):
                         'affinity': float(raw_scores[i, j]), 'comparison': drug_pair(td[i], sd[j],prospective=True),
                         'drug_evidence': correspondence[i][j],
                         'ambiguous': bool(sum(abs(x - matrix[i, j]) < 1e-8 for x in allowed_scores) > 1),
-                        'role_rule': 'manual_override' if target.drugs[i].drug_id in overrides else 'roles_not_scored',
+                        'role_rule': ('manual_override' if target.drugs[i].drug_id in overrides else
+                                      'primary_investigated_first' if primary[j] else 'other_drug_fallback'),
                         'target_role': target.drugs[i].research_role,
                         'source_role': scope.drugs[j].research_role,
                         'role_transfer': target.drugs[i].research_role != scope.drugs[j].research_role})
@@ -69,6 +102,8 @@ def match_target(target, scope, *, weights=None):
                'details': details, 'unmatched_target_ids': [d.drug_id for d in target.drugs if d.drug_id not in pairs],
                'removed_source_ids': [d.model_drug_id for d in scope.drugs if d.model_drug_id not in pairs.values()],
                'score': score}
+    if coverage is not None:
+        payload.update(clinical_coverage=coverage, minimum_clinical_coverage=minimum)
     payload['mapping_id'] = fingerprint(payload)
     return payload
 
@@ -90,6 +125,8 @@ def _unit_scale(source, target):
 
 
 def mapped_relative_dose(target_drug, source_drug, value):
+    if target_drug.mode == 'numeric' and source_drug.mode == 'background':
+        raise ValueError(f'{target_drug.name}: numerical target doses require a numeric source axis; dose-unknown anchoring is prohibited')
     if target_drug.mode == 'background' and value not in (0, None):
         raise ValueError('Background target accepts only 0 (absent) or null (present without dose)')
     if value == 0:
@@ -102,9 +139,7 @@ def mapped_relative_dose(target_drug, source_drug, value):
     if source_drug.mode == 'background':
         if target_drug.mode == 'background' or value is None:
             return 1.
-        if not target_drug.allow_background_anchor:
-            raise ValueError(f'{target_drug.name}: needs_target_mapping; source has no numerical dose axis')
-        return value / target_drug.reference_dose
+        raise ValueError(f'{target_drug.name}: source has no numerical dose axis')
     if value is None:
         raise ValueError(f'{target_drug.name}: numerical source needs an explicit target dose/reference mapping')
     if target_drug.transport_mode == 'same_entity_unit_conversion':

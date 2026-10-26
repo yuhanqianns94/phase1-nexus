@@ -25,9 +25,14 @@ def new_app(tmp_path, monkeypatch):
 
 
 def review_one(app):
-    button(app, 'Continue to matching articles').click().run()
+    for _ in range(5):
+        app.button(key='trial_plan_next').click().run()
+    button(app, 'Next: Review evidence').click().run()
     assert app.sidebar.radio[0].value == 'Review evidence'
     app.radio(key='workflow_screening').set_value('Review article abstracts').run()
+    # This fixture intentionally enters only a drug name. Its clinical
+    # coverage is below the new default; explicitly disable that gate here.
+    app.number_input(key='workflow_min_clinical_coverage').set_value(0.).run()
     button(app, 'Find matching articles').click().run()
     decision = next(item for item in app.radio if item.label == 'Relevance decision')
     assert decision.value == 'Not reviewed'
@@ -35,6 +40,19 @@ def review_one(app):
     decision.set_value('Include').run()
     assert not button(app, 'Continue to risk curves').disabled
     return app
+
+
+def test_sparse_plan_is_gated_before_article_review(tmp_path, monkeypatch):
+    app = new_app(tmp_path, monkeypatch)
+    app.sidebar.radio[0].set_value('Review evidence').run()
+    assert app.number_input(key='workflow_min_clinical_coverage').value == .2
+    assert not any(item.label == 'Minimum drug-evidence similarity' for item in app.number_input)
+    button(app, 'Find matching articles').click().run()
+    preview = app.session_state['multidrug_preview']
+    assert not preview['selected_series']
+    assert any(row.get('reason') == 'insufficient_clinical_coverage' for row in preview['diagnostics']['notices'])
+    assert any('coverage threshold' in item.value for item in app.info)
+    assert not app.exception
 
 
 def test_no_dose_prospective_plan_can_review_and_predict_relative_curve(tmp_path, monkeypatch):

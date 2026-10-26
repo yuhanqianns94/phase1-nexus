@@ -10,8 +10,8 @@ from jax.scipy.special import expit
 
 
 def interaction_sets(drug_count):
-    h = range(min(drug_count, 3))
-    return [s for n in (2, 3) for s in combinations(h, n)]
+    """All unordered drug pairs; higher-order interactions are unsupported."""
+    return list(combinations(range(drug_count), 2))
 
 
 def component_risks(a, log_b, relative_doses, numeric_mask, present):
@@ -48,7 +48,7 @@ def logistic_risk(q, relative_doses, eta):
 
 
 def product_interaction_basis(relative_doses):
-    """Ordinary products, restricted to pair/triple terms among the first three drugs."""
+    """Ordinary dose products for every unordered drug pair."""
     r = jnp.asarray(relative_doses)
     terms = []
     for group in interaction_sets(r.shape[-1]):
@@ -70,3 +70,13 @@ def product_logistic_risk(alpha, log_b, relative_doses, eta):
     predictor = (alpha + jnp.sum(jnp.exp(log_b) * r, axis=-1)
                  + jnp.sum(product_interaction_basis(r) * eta, axis=-1))
     return expit(predictor)
+
+
+def single_drug_logistic_risk(alpha, log_slope, relative_dose, combination_shift, combination_present):
+    """A focal numeric dose with a nonnegative, generative background-context shift.
+
+    Zero focal dose retains its baseline risk. The shift is shared across source
+    fitting and target evaluation; it is never added to an already fitted risk.
+    """
+    return expit(alpha + jnp.exp(log_slope) * jnp.asarray(relative_dose)
+                 + combination_shift * jnp.asarray(combination_present))

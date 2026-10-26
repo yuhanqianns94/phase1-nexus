@@ -211,9 +211,9 @@ def test_request_contract_is_unchanged():
     body = llm.build_request_body(packet={"document_id": "CONTRACT", "packet_id": "packet_0001",
         "source_units": [], "is_final_packet": True}, prior=None, image_paths=[],
         model="gpt-5.6-sol", reasoning_effort="low", max_output_tokens=48000)
-    # Refresh after the authorized English-output instruction was added.
+    # Refresh for primary/co-primary research roles and removal of the R3 imputation rule.
     # The complete prompt, strict schema, settings and serialization stay pinned.
-    assert sha256_json(body) == "e0f5c55ac8bc3c811a71383bf0fb58303d30ded35bf3ba3ab2bea7489be4d11b"
+    assert sha256_json(body) == "9e8255bf50bc1b69ffbee259b998a4784e2ebb89548b18adc967ba83c5b03f4f"
 
 
 def test_resume_restores_missing_and_stale_request_provenance(tmp_path):

@@ -16,7 +16,7 @@ def fixture(k=2, backend='logistic'):
                  mode='numeric',reference_dose=100,unit='mg',profile=profiles[i]) for i in range(k)],
         observations=[],profile={'configurations':[{'phase':'Phase I','drugs':profiles}]})
     arrays={'a':np.full((2,20,k),-2.),'log_b':np.zeros((2,20,k)),
-            'eta':np.zeros((2,20,0 if k==1 else 1 if k==2 else 4))}
+            'eta':np.zeros((2,20,k*(k-1)//2))}
     manifest={'source_fit_id':'fit_x','backend':backend,'status':'fitted','sampler':{}}
     target=TargetRegimen(name='target',drugs=[TargetDrug(drug_id=chr(65+i),name=chr(65+i),research_priority=i+1,
         research_role='primary' if i==0 else 'partner',reference_dose=50,unit='mg',profile=profiles[i]) for i in range(k)],
@@ -63,6 +63,25 @@ def test_assembly_preserves_same_fit_interactions(backend):
         assert len({c['flat_draw'] for c in trace['components']})==1
         if backend=='logistic':assert trace['interactions'][0]['basis']=='source_joint_draw'
         else:assert len(trace['interactions']['retained_pairs'])==1
+
+
+def test_four_drug_assembly_inherits_every_pair_without_three_way_terms():
+    from phase1_prediction.multidrug.math import interaction_sets
+    from scipy.special import expit, logit
+    scope, arrays, manifest, target = fixture(4)
+    pairs = interaction_sets(4)
+    eta = np.array([.1, -.2, .3, -.4, .5, -.6])
+    arrays['eta'][:] = eta
+    target.points = [RegimenPoint(level_id='asymmetric', doses={'A': 25., 'B': 50., 'C': 75., 'D': 100.})]
+    target.path_level_ids = []
+    result = assemble_components([(scope, arrays, manifest)], target, draw_count=5)
+    r = np.array([.5, 1., 1.5, 2.])
+    p0 = 1 - np.prod(1-expit(-2.+np.log(r)))
+    shift = sum(v * 2*r[i]*r[j]/(1+r[i]*r[j]) for v, (i, j) in zip(eta, pairs))
+    np.testing.assert_allclose(result['posterior_draws'], expit(logit(p0)+shift))
+    for trace in result['provenance']:
+        assert [tuple(x['target_indices']) for x in trace['interactions']] == pairs
+        assert all(x['basis'] == 'source_joint_draw' for x in trace['interactions'])
 
 
 def test_cache_is_source_only_and_checksummed(tmp_path):

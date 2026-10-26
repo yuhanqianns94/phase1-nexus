@@ -1,4 +1,4 @@
-"""Offline, idempotent field migration. Preserve counts, R3 and review history."""
+"""Offline, idempotent field migration. Preserve source counts and historical review/provenance records; retired R3 is not usable evidence."""
 from pathlib import Path
 from phase1_extraction.artifacts import ArticlePaths,active_review_root,read_json,write_json,sha256_file,utc_now
 from phase1_extraction.models import ReportedExtraction,DocumentIR

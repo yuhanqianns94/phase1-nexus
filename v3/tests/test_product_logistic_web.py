@@ -10,7 +10,7 @@ from test_prior_settings_web import target_app, choose
 
 def test_product_labels_and_result_identity_are_model_specific():
     assert prediction_result_label('logistic_product · same_article_joint_posterior_average') == (
-        'Product-interaction Logistic · Method 1: weighted average')
+        'Product-interaction Logistic · Posterior average')
     assert prediction_result_key('logistic_product', 'same_article_joint_posterior_average', prior=PriorSpec()) != (
         prediction_result_key('logistic', 'same_article_joint_posterior_average', prior=PriorSpec()))
     rows = prior_parameter_rows(PriorSpec(), 'logistic_product')
@@ -19,37 +19,55 @@ def test_product_labels_and_result_identity_are_model_specific():
     assert MODEL_LABELS['logistic_product'] == 'Product-interaction Logistic'
 
 
-def test_product_selection_routes_complete_methods_and_disallows_assembly(tmp_path, monkeypatch):
-    from phase1_web import multidrug_app
-    calls = []
-    def fake_predict(library, target, **kwargs):
-        calls.append(kwargs)
-        return SimpleNamespace(to_dict=lambda: {
-            'run_id': f'test_{len(calls)}', 'target': target.model_dump(), 'methods': {}})
-    monkeypatch.setattr(multidrug_app, 'predict', fake_predict)
-    app = target_app(tmp_path, monkeypatch)
-    choose(app, 'Evidence construction', 'Component assembly (advanced)')
-    app.selectbox(key='workflow_probability_model').set_value('logistic_product').run()
-    assert not app.exception and not app.error
-    assert app.selectbox(key='workflow_product_construction').options == ['Complete-regimen borrowing']
-    assert not any(box.key == 'workflow_component_aggregation' for box in app.selectbox)
-    assert any('shared baseline intercept' in cap.value for cap in app.caption)
-    for method in list(app.selectbox(key='workflow_aggregation').options):
-        choose(app, 'Curve aggregation', method)
-        next(button for button in app.button if button.label == 'Generate prediction').click().run()
-        assert not app.exception and not app.error
-        assert calls[-1]['backend'] == 'logistic_product'
-    assert [call['synthesis'] for call in calls] == [
-        'same_article_joint_posterior_average', 'same_article_joint_posterior_mixture', 'target_power_prior']
-    choose(app, 'Risk-parameter prior', 'custom')
-    assert app.number_input(key='prior_settings_logistic_product_risk_intercept_mean').label == (
-        'Baseline log-odds at all-zero doses: mean')
-    app.number_input(key='prior_settings_logistic_product_risk_intercept_mean').set_value(-2.).run()
-    app.selectbox(key='workflow_probability_model').set_value('logistic').run()
-    choose(app, 'Risk-parameter prior', 'custom')
-    assert app.number_input(key='prior_settings_logistic_risk_intercept_mean').value == PriorSpec().intercept_mean
-    choose(app, 'Evidence construction', 'Component assembly (advanced)')
-    assert len(app.selectbox(key='workflow_component_aggregation').options) == 2
-    app.selectbox(key='workflow_probability_model').set_value('logistic_product').run()
-    assert app.number_input(key='prior_settings_logistic_product_risk_intercept_mean').value == -2.
-    assert not app.exception and not app.error
+
+def test_formula_rendering_keeps_one_focal_curve_for_combination_plans():
+    from streamlit.testing.v1 import AppTest
+    app = AppTest.from_string("""
+import streamlit as st
+from phase1_web.model_formulas import render_model, render_aggregation, target_combination
+from phase1_web.prior_settings import render_prior_formulas
+from phase1_prediction.multidrug.contracts import PriorSpec
+from phase1_web.multidrug_app import example_target
+count = st.number_input('Drugs', 1, 4, 1)
+used = st.checkbox('Use companions', value=True)
+target = example_target()
+for i in range(1, count):
+    target['drugs'].append({**target['drugs'][0], 'drug_id': str(i), 'name': str(i), 'research_priority': i + 1})
+    for point in target['points']: point['doses'][str(i)] = 10. if used else 0.
+combination = target_combination(target)
+render_model(st, target['drugs'], 'D', combination=combination)
+render_prior_formulas(st, PriorSpec(), backend='single_drug_logistic', drug_count=count, combination=combination)
+render_aggregation(st, combination=combination)
+""").run()
+    assert not app.exception
+    source_curve = lambda: next(item.value for item in app.latex if r'p_{\mathrm{source}}' in item.value)
+    single = source_curve()
+    assert r'\alpha+e^\ell r' in single and r'\delta' not in single
+    assert any(item.value == 'Historical combination adjustment' for item in app.caption)
+    assert not app.expander
+    assert not any('No companion is used' in item.value or 'This is one source curve' in item.value
+                   or 'Each source uses its own dose reference' in item.value for item in app.caption)
+    assert any(r'\Pr(I_s=i)' in item.value for item in app.latex)
+    assert not any(r'\bar p^{(s)}' in item.value or r'Y_{ik}' in item.value for item in app.latex)
+    app.radio(key='workflow_formula_aggregation').set_value('average').run()
+    assert any(r'\bar p^{(s)}' in item.value for item in app.latex)
+    assert not any(r'\Pr(I_s=i)' in item.value or r'Y_{ik}' in item.value for item in app.latex)
+    app.number_input[0].set_value(3).run()
+    assert not app.exception
+    multiple = source_curve()
+    assert r'+\delta' in multiple and r'\delta C' not in multiple
+    assert not any(item.value == 'Historical combination adjustment' for item in app.caption)
+    app.checkbox[0].set_value(False).run()
+    assert source_curve() == single
+    app.radio(key='workflow_formula_aggregation').set_value('historical').run()
+    assert not app.expander
+    assert any('$u_i$' in item.value and '$v_i$' in item.value for item in app.caption)
+    assert any('$C_{ik}$' in item.value for item in app.caption)
+    assert any('$a_i=0.5$' in item.value for item in app.caption)
+    assert not any(r'\Pr(I_s=i)' in item.value or r'\bar p^{(s)}' in item.value for item in app.latex)
+    new_curve = next(item.value for item in app.latex if r'p_{\mathrm{new}}' in item.value)
+    assert r'v_{\mathrm{new}}' in new_curve and r'\delta' not in new_curve
+    app.checkbox[0].set_value(True).run()
+    assert all(r'+\delta' in item.value for item in app.latex if r'p_{\mathrm{new}}' in item.value)
+    assert len(app.radio(key='workflow_formula_aggregation').options) == 3
+    assert not app.exception

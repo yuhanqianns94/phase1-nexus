@@ -21,21 +21,17 @@ def test_native_workspace_and_target_editor(tmp_path,monkeypatch):
     assert not any(x.label == 'Curve aggregation' for x in app.selectbox)
     app.sidebar.radio[0].set_value('Prediction Results').run()
     assert not app.exception and not app.error
-    assert app.selectbox(key='workflow_probability_model').value == 'logistic'
-    assert app.selectbox(key='workflow_probability_model').options == ['Component Logistic', 'Product-interaction Logistic']
-    borrowing = next(x for x in app.selectbox if x.label == 'Curve aggregation')
-    assert 'Average of article posterior curves (Method 1)' in borrowing.options
-    borrowing.set_value('Average of article posterior curves (Method 1)').run()
+    assert not any(x.label in ('Probability model', 'Evidence construction') for x in app.selectbox)
+    borrowing = app.radio(key='workflow_formula_aggregation')
+    assert borrowing.value == 'mixture'
+    borrowing.set_value('average').run()
     assert not app.exception and not app.error
     assert not any('uplift' in str(x.label).lower() for x in app.number_input)
-    next(x for x in app.selectbox if x.label == 'Curve aggregation').set_value('Power prior from discounted historical data (Method 3)').run()
-    assert not app.exception and not app.error
-    next(x for x in app.selectbox if x.label == 'Historical borrowing settings').set_value('custom').run()
-    app.number_input(key='prior_settings_logistic_power_strength').set_value(.4).run()
-    assert app.number_input(key='prior_settings_logistic_power_budget').value == 30.
-    next(x for x in app.selectbox if x.label == 'Curve aggregation').set_value('Average of article posterior curves (Method 1)').run()
-    next(x for x in app.selectbox if x.label == 'Curve aggregation').set_value('Power prior from discounted historical data (Method 3)').run()
-    assert not app.exception and app.number_input(key='prior_settings_logistic_power_strength').value == .4
+    next(x for x in app.radio if x.label == 'Prior scales').set_value('custom').run()
+    app.number_input(key='prior_settings_single_drug_logistic_risk_intercept_mean').set_value(-1.5).run()
+    app.radio(key='workflow_formula_aggregation').set_value('mixture').run()
+    assert app.number_input(key='prior_settings_single_drug_logistic_risk_intercept_mean').value == -1.5
+    assert not app.exception
 
 
 def test_grid_is_not_automatically_a_simulation_path():

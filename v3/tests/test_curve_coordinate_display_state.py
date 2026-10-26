@@ -149,5 +149,6 @@ def test_no_varying_numeric_coordinate_uses_table_guidance(coordinates):
     app=_chart_app(method)
     assert not app.selectbox and not app.radio
     assert app.session_state['rendered'] is None and app.session_state['surface'] is None
-    assert any('No numeric coordinate varies' in c.value for c in app.caption)
+    assert len(app.dataframe) == 1
+    assert len(app.dataframe[0].value) == len(method['summary'])
     assert not app.exception

@@ -1,4 +1,4 @@
-"""Deterministically apply denominator selection, D0, R1, R3, and R2."""
+"""Deterministically apply source-supported denominator selection, D0, R1, and R2."""
 
 from __future__ import annotations
 
@@ -21,11 +21,10 @@ from .models import (
     ResultScope,
     RuleApplication,
     ScopeCoverageAssessment,
-    TrialDesign,
 )
 
 
-RULE_VERSION = "3.1.1"
+RULE_VERSION = "3.2.0"
 
 
 _MASS_TO_MG = {"ug": 0.001, "mcg": 0.001, "mg": 1.0, "g": 1000.0}
@@ -52,7 +51,6 @@ class _Value:
     basis: str
     role: str = "unknown"
     input_ids: list[str] | None = None
-    candidates: list[int] | None = None
     reason: str | None = None
     dependencies: list[str] | None = None
 
@@ -138,13 +136,28 @@ def _reported_patient_value(observation: DLTObservation) -> _Value:
     return _Value(None, "missing")
 
 
+def _retired_count_ids(counts: list[PopulationCount]) -> set[str]:
+    """Do not launder a legacy R3 count through saved arithmetic provenance."""
+    retired = {item.count_id for item in counts if item.provenance.basis == "r3_design_inferred"}
+    while True:
+        dependent = {
+            item.count_id for item in counts
+            if retired.intersection([*item.derived_from_count_ids, *item.provenance.input_record_ids])
+        }
+        if dependent <= retired:
+            return retired
+        retired.update(dependent)
+
+
 def _derive_equations(
     extraction: ReportedExtraction,
 ) -> tuple[dict[str, int], dict[str, _Value], list[RuleApplication]]:
+    retired = _retired_count_ids(extraction.population_counts)
     count_values = {
         item.count_id: item.reported_value
         for item in extraction.population_counts
         if item.reported_value is not None and item.reporting_status == "reported"
+        and item.count_id not in retired
     }
     observation_values: dict[str, _Value] = {}
     directly_resolved_observations: set[str] = set()
@@ -223,7 +236,7 @@ def _denominator_candidate(
 ) -> bool:
     """Return whether a count is allowed to influence a DLT denominator."""
 
-    return bool(
+    return item.provenance.basis != "r3_design_inferred" and bool(
         item.role in {"paired_dlt_denominator", "dlt_evaluable", "treated"}
         or item.equivalent_to_role in {"dlt_evaluable", "treated"}
         or analysis_roles.get(item.analysis_population_id or "") in {"dlt_evaluable", "treated"}
@@ -293,7 +306,10 @@ def _counts_for_cohort(
     analysis_windows: dict[str, str | None],
 ) -> list[PopulationCount]:
     matches: list[PopulationCount] = []
+    retired = _retired_count_ids(counts)
     for count in counts:
+        if count.count_id in retired:
+            continue
         if count.study_id != study_id:
             continue
         if count.part_id is not None and part_id is not None and count.part_id != part_id:
@@ -491,72 +507,6 @@ def _select_denominator(
         reported_evaluable,
         issues,
         blocked,
-    )
-
-
-def _r3_denominator(
-    cohort: Cohort,
-    design: TrialDesign | None,
-    numerator: _Value,
-) -> _Value:
-    if design is None or design.normalized_type not in {"classic_3plus3", "modified_3plus3"}:
-        return _Value(None, "missing")
-    # A dose-expansion/confirmation population need not have the escalation
-    # design's size (e.g. an initial three plus five additional patients).
-    if cohort.cohort_role in {"expansion", "confirmation"}:
-        return _Value(None, "missing")
-    initial = design.initial_cohort_n or 3
-    added = design.added_cohort_n or 3
-    expanded = design.expanded_total_n or initial + added
-    candidates: list[int] = []
-    if cohort.expansion_status in {"completed_expansion", "completed_to_six", "added_three"}:
-        value = expanded
-        assumption = "The source reports completion of the design expansion"
-    elif cohort.expansion_status in {"initial_three_only", "stopped_before_expansion"}:
-        value = initial
-        assumption = "The source limits the cohort to the initial design stage"
-    elif design.normalized_type == "modified_3plus3" and (
-        design.initial_cohort_n is not None
-        or design.added_cohort_n is not None
-        or design.expand_when_y_equals
-        or design.stop_when_y_at_least is not None
-    ):
-        y = numerator.value
-        if y is not None and y in design.expand_when_y_equals:
-            value = expanded
-            assumption = "The source-specific modified 3+3 expansion rule applies"
-        elif y is not None and design.stop_when_y_at_least is not None and y >= design.stop_when_y_at_least:
-            value = initial
-            assumption = "The source-specific modified 3+3 stopping rule applies"
-        elif y is None or y == 0:
-            value = initial
-            assumption = "No source-specific expansion trigger is observed; use the initial modified-design cohort"
-        else:
-            return _Value(None, "missing")
-    else:
-        y = numerator.value
-        if y == 1:
-            value = 6
-            assumption = "Classic 3+3 assumption: one DLT leads to a completed additional cohort"
-        elif y is None or y == 0:
-            value = 3
-            assumption = "Classic 3+3 assumption: use the initial cohort when expansion is not indicated"
-        elif y in {2, 3}:
-            value = 3
-            candidates = [3, 6]
-            assumption = "Classic 3+3 assumption: the initial cohort reached the stopping condition"
-        elif y is not None and 4 <= y <= 6:
-            value = 6
-            assumption = "The adopted patient numerator cannot fit in a three-patient cohort"
-        else:
-            return _Value(None, "missing")
-    return _Value(
-        value,
-        "design_inferred",
-        role="design_assumed_cohort",
-        input_ids=[design.design_id, cohort.cohort_id, *(numerator.input_ids or [])],
-        candidates=candidates,
-        reason=assumption,
     )
 
 
@@ -782,7 +732,7 @@ def _specific_reported_scope(
     Preserve distinct windows/cutoffs and conflicting or separately reported
     observations. An explicit nested zero can resolve an empty broad projection
     even when missing material keeps both scopes partial. Coverage flags remain
-    unchanged, and any design denominator still uses the existing R3 rule.
+    unchanged. Denominators require reported counts or deterministic arithmetic.
     The original scopes and evidence are never changed.
     """
     if broad.dlt_results_coverage not in {"complete", "partial"} or broad.explicit_no_dlt_in_scope or broad.unresolved_positive_dlt:
@@ -822,11 +772,7 @@ def _specific_reported_scope(
             derived_counts={}, study_id=narrow.study_id, part_id=narrow.part_id,
             arm_id=narrow.arm_id, window_id=narrow.window_id,
         )
-        if denominator.value is None and not blocked and not n_issues and narrow.explicit_no_dlt_in_scope:
-            series = next((s for s in extraction.dose_series if s.series_id == cohort.series_id), None)
-            design = next((d for d in extraction.designs if series is not None and d.design_id == series.design_id), None)
-            denominator = _r3_denominator(cohort, design, numerator)
-        if (not issues and not n_issues and not blocked and denominator.basis in {"reported", "design_inferred"}
+        if (not issues and not n_issues and not blocked and denominator.basis in {"reported", "derived"}
             and denominator.value is not None and numerator.value is not None
             and numerator.basis in {"reported", "derived"} and 0 <= numerator.value <= denominator.value):
             candidates.append(narrow)
@@ -1020,27 +966,7 @@ def resolve_extraction(extraction: ReportedExtraction) -> ResolvedExtraction:
             elif numerator.basis == "derived" and numerator.value == 0 and scope.explicit_no_dlt_in_scope:
                 row_rule_ids.append("D0")
                 applications.append(_application("D0", curve_row_id, "y", 0, numerator.input_ids or [], numerator.reason or "D0"))
-            if denominator.value is None and not denominator_blocked:
-                active_design = design_by_id.get(series.design_id or "")
-                denominator = _r3_denominator(cohort, active_design, numerator)
-                if denominator.value is not None:
-                    row_rule_ids.append("R3")
-                    applications.append(_application("R3", curve_row_id, "n", denominator.value, denominator.input_ids or [], denominator.reason or "R3"))
-                    if (
-                        active_design is not None
-                        and active_design.normalized_type == "classic_3plus3"
-                        and numerator.value is not None
-                        and 4 <= numerator.value <= 6
-                    ):
-                        issues.append(
-                            _issue(
-                                "warning",
-                                "classic_3plus3_protocol_deviation_candidate",
-                                [cohort_id, active_design.design_id],
-                                "The resolved numerator requires six patients but is unusual for a completed classic 3+3 cohort; retain the row and inspect replacements or deviations",
-                            )
-                        )
-            elif denominator.value is not None:
+            if denominator.value is not None:
                 applications.append(
                     _application(
                         "DENOMINATOR_SELECTION", curve_row_id, "n", denominator.value,
@@ -1106,7 +1032,7 @@ def resolve_extraction(extraction: ReportedExtraction) -> ResolvedExtraction:
             if not dose_unit:
                 exclusion_reasons.append("dose unit is missing")
             if denominator.value is None:
-                exclusion_reasons.append("no direct, derived, or design-inferred denominator")
+                exclusion_reasons.append("no source-reported or arithmetic-derived denominator")
             if numerator.value is None:
                 exclusion_reasons.append("DLT patient numerator is unresolved")
             if denominator_blocked:
@@ -1134,7 +1060,7 @@ def resolve_extraction(extraction: ReportedExtraction) -> ResolvedExtraction:
                 "imputed_zero": "imputed_zero",
                 "missing": "missing",
             }
-            denominator_basis = denominator.basis if denominator.basis in {"reported", "derived", "design_inferred"} else "missing"
+            denominator_basis = denominator.basis if denominator.basis in {"reported", "derived"} else "missing"
             evidence_records: list[object] = [cohort, scope, series, *cohort_observations]
             evidence_records.extend(
                 _counts_for_cohort(
@@ -1179,14 +1105,13 @@ def resolve_extraction(extraction: ReportedExtraction) -> ResolvedExtraction:
                     numerator_basis=basis_map[numerator.basis],
                     denominator_basis=denominator_basis,
                     denominator_role=denominator.role if denominator.role in {
-                        "paired_dlt", "dlt_evaluable", "treated", "equivalent_treated", "design_assumed_cohort"
+                        "paired_dlt", "dlt_evaluable", "treated", "equivalent_treated"
                     } else "unknown",
                     rule_ids=row_rule_ids,
-                    design_candidate_ns=denominator.candidates or [],
                     included_in_default=included,
                     outcome_usable=outcome_usable,
                     outcome_exclusion_reasons=outcome_exclusions,
-                    included_in_reported_only=included and not any(rule in {"R1", "R2", "R3"} for rule in row_rule_ids),
+                    included_in_reported_only=included and not any(rule in {"R1", "R2"} for rule in row_rule_ids),
                     exclusion_reasons=exclusion_reasons,
                     evidence_source_ids=_source_ids(evidence_records),
                 )

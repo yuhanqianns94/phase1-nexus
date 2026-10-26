@@ -69,8 +69,8 @@ def _article(root: Path, document_id: str, *, rows: list[tuple[float, int, int]]
         cohort_id=f"cohort_{index}", series_id=series_id, result_scope_id="scope",
         regimen_id="regimen", varying_component_id="component", dose_value=dose,
         dose_unit="mg/kg", dose_raw=f"{dose} mg/kg", window_id="window", n=n, y=y,
-        rate=y/n, denominator_role="paired_dlt" if index == 0 else "design_assumed_cohort",
-        denominator_basis="reported" if index == 0 else "design_inferred",
+        rate=y/n, denominator_role="paired_dlt",
+        denominator_basis="reported",
         numerator_basis="reported" if y else "imputed_zero", rule_ids=[] if y else ["R2"],
         included_in_default=True, included_in_reported_only=index == 0,
     ) for index, (dose, n, y) in enumerate(rows)]
@@ -92,7 +92,7 @@ def test_native_v3_evidence_preserves_series_scopes_and_resolver_values(tmp_path
     first = next(item for item in library.series if item.series_id == "first")
     assert [(point.dose, point.n, point.y) for point in first.points] == [(.1, 3, 0), (.3, 6, 2)]
     assert first.points[0].denominator_role == "paired_dlt"
-    assert first.points[1].denominator_role == "design_assumed_cohort"
+    assert first.points[1].denominator_role == "paired_dlt"
     assert first.points[0].numerator_basis == "imputed_zero"
     assert first.features["drug"] == "IPH2101"
     assert first.study_group_id == "PMC1|study|part_i"

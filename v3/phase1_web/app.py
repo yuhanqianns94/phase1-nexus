@@ -179,7 +179,7 @@ def _library_page(roots: list[Path], library, *, model_scopes=None) -> None:
     c4.metric("Phase I model scopes", sum(r["scopes"] for r in usable.values()))
     st.caption("Eligibility follows the Phase I filter used in prediction. Eligible scopes without DLT/N are prior-only. Eligibility does not guarantee a usable fit or a match to your target.")
     f1, f2, f3 = st.columns([2, 1, 1])
-    query = f1.text_input("Search by PMC ID", placeholder="PMC3309850").strip().casefold()
+    query = f1.text_input("Search by PMC or PMID", placeholder="PMC3309850 or PMID42718886").strip().casefold()
     scope = f2.selectbox("Show", ["Articles with v3 output", "Phase I eligible articles", "All local articles"])
     status = f3.selectbox("Material filter", ["Any", "PDF available", "XML available"])
     rows = []
@@ -207,17 +207,23 @@ def _library_page(roots: list[Path], library, *, model_scopes=None) -> None:
             eligibility = 'Excluded: outside Phase I'
         else:
             eligibility = 'No model scope available'
+        coverage = "Not extracted"
+        if article["extraction_status"] == "ready":
+            reported = json.loads(Path(article["reported_extraction"]).read_text())
+            coverage = "Complete coverage" if reported.get("extraction_complete") else "Partial coverage"
         rows.append({
-            "Article": document_id, "V3 extraction": "Complete" if article["extraction_status"] == "ready" else "Not extracted",
+            "Article": document_id, "V3 extraction": coverage,
             "Phase I eligibility": eligibility, "Eligible scopes": summary.get("scopes", 0),
             "DLT observations": summary.get("points", 0), "PDF": "Yes" if article["pdf_path"] else "No", "XML": "Yes" if article["xml_path"] else "No",
         })
     st.dataframe(rows, use_container_width=True, hide_index=True)
+    if any(row["V3 extraction"] == "Partial coverage" for row in rows):
+        st.caption("Partial coverage: some source material or extracted information is incomplete. Missing values and model exclusions are retained; coverage is not a manual-review status.")
     if rows:
         selected_id = st.selectbox("Article details", [row["Article"] for row in rows])
         article = next(item for item in catalog["articles"] if item["document_id"] == selected_id)
         if article.get('source_url'):
-            st.link_button("Open article in PMC", article["source_url"])
+            st.link_button("Open article", article["source_url"])
         if not public:
             st.write({"Extraction result": article["extraction_root"], "Local PDF": article["pdf_path"], "Local XML": article["xml_path"]})
     with st.expander("Library diagnostics"):

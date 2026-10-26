@@ -18,8 +18,9 @@ LEGACY_POLICY_VERSION = "phase1_binary_20261010_v1"
 REFERENCE_POLICY_VERSION = "phase1_binary_20261011_v2"
 SUPPORTIVE_CARE_POLICY_VERSION = "phase1_binary_20261011_v3"
 DLT_POLICY_VERSION = "phase1_binary_20261012_v4"
-POLICY_VERSION = "phase1_binary_20261012_v5"
-DLT_POLICIES = {DLT_POLICY_VERSION, POLICY_VERSION}
+DRUG_POLICY_VERSION = "phase1_binary_20261012_v5"
+POLICY_VERSION = "phase1_binary_20261025_v6_no_r3"
+DLT_POLICIES = {DLT_POLICY_VERSION, DRUG_POLICY_VERSION, POLICY_VERSION}
 SUPPORTED_POLICIES = {LEGACY_POLICY_VERSION, REFERENCE_POLICY_VERSION, SUPPORTIVE_CARE_POLICY_VERSION, *DLT_POLICIES}
 MODEL = "gpt-6-luna"
 EFFORT = "low"
@@ -284,13 +285,35 @@ and its role in the Phase I intervention; diagnosis or a medication list alone i
 """
 _v4_intro, _v4_criteria = DLT_PROMPT.split("1 human_oncology_treatment:", 1)
 _, _v4_after_treatment = _v4_criteria.split("\n2 own_phase1_results:", 1)
-CURRENT_PROMPT = (_v4_intro + DRUG_TREATMENT_CRITERION
+DRUG_PROMPT = (_v4_intro + DRUG_TREATMENT_CRITERION
                   + "\n2 own_phase1_results:" + _v4_after_treatment + """
 The usable dose-DLT-count/population observation must belong to the qualifying anticancer
 drug regimen. A cell count, radiation dose, or procedure intensity alone is not an actual
 drug dose. Do not demand attribution of combination-regimen DLTs to one individual drug;
 retain the observed regimen-level numerator and matching patient denominator.
 """)
+
+# Frozen v4/v5 prompts remain reproducible for already submitted requests.
+# New screening requires an observed or source-arithmetic denominator.
+CURRENT_PROMPT = DRUG_PROMPT.replace(
+    "Source-supported unambiguous count arithmetic is allowed. Existing downstream 3+3 inference\n"
+    "may supply a missing per-dose count when the article explicitly identifies an applicable\n"
+    "classic/modified 3+3 dose-escalation design and an actual escalation cohort with countable DLTs.\n"
+    "Do not demand an explicitly printed denominator in that case. A generic 3+3 design statement\n"
+    "does not establish an observed dose or DLT result, and does not supply a missing expansion or\n"
+    "confirmation-cohort size.",
+    "Source-supported unambiguous count arithmetic is allowed. R3 is retired: never infer a\n"
+    "denominator from classic/modified 3+3 design, planned cohort sizes, DLT counts, or\n"
+    "expansion/stopping status. Actual cohort counts must be reported or uniquely recoverable\n"
+    "from explicit source arithmetic. If no qualifying dose-DLT observation has such a\n"
+    "denominator, this criterion fails."
+).replace("apply R1/R2/R3", "apply R1/R2").replace(
+    "DLT count, AND applicable population/count evidence; include design evidence when relying on\n"
+    "3+3 inference. Explain briefly how those facts refer to the same cohort and why it is usable.",
+    "DLT count, AND the reported patient denominator or explicit arithmetic inputs. Explain\n"
+    "briefly how those facts refer to the same cohort and why the observation is usable."
+)
+
 
 
 def is_retained(decision: str | None) -> bool:
@@ -423,7 +446,8 @@ def make_request(document: dict) -> dict:
         raise ValueError("Screening document exceeds safe input bound; no text was truncated")
     prompts = {LEGACY_POLICY_VERSION: PROMPT, REFERENCE_POLICY_VERSION: REFERENCE_PROMPT,
                SUPPORTIVE_CARE_POLICY_VERSION: SUPPORTIVE_CARE_PROMPT,
-               DLT_POLICY_VERSION: DLT_PROMPT, POLICY_VERSION: CURRENT_PROMPT}
+               DLT_POLICY_VERSION: DLT_PROMPT, DRUG_POLICY_VERSION: DRUG_PROMPT,
+               POLICY_VERSION: CURRENT_PROMPT}
     schema_model = Decision if policy == LEGACY_POLICY_VERSION else _reference_model(policy)
     return {"model": MODEL, "reasoning": {"effort": EFFORT}, "max_output_tokens": 4096,
             "store": False, "instructions": prompts[policy],

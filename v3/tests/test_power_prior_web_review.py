@@ -59,7 +59,7 @@ def test_review_preview_selects_the_same_eligible_scope_and_absolute_powers_as_p
     assert prior_only['ready'] and prior_only['discounted_patient_count'] == 0
 
 
-def test_method3_abstract_review_displays_absolute_discounted_counts(tmp_path, monkeypatch):
+def test_formula_workflow_preserves_manual_review_decisions(tmp_path, monkeypatch):
     from streamlit.testing.v1 import AppTest
     from test_prediction_pipeline import _article
     _article(tmp_path, 'PMC123', rows=[(.1, 3, 0), (.3, 6, 2)])
@@ -74,23 +74,21 @@ def test_method3_abstract_review_displays_absolute_discounted_counts(tmp_path, m
     next(b for b in app.button if b.label == 'Find matching articles').click().run()
     assert next(b for b in app.button if b.label == 'Continue to risk curves').disabled
     app.sidebar.radio[0].set_value('Prediction Results').run()
-    next(x for x in app.selectbox if x.label == 'Curve aggregation').set_value('Power prior from discounted historical data (Method 3)').run()
+    assert app.radio(key='workflow_formula_aggregation').value == 'mixture'
     assert next(b for b in app.button if b.label == 'Generate prediction').disabled
     app.sidebar.radio[0].set_value('Review evidence').run()
     next(x for x in app.radio if x.label == 'Relevance decision').set_value('Include').run()
     app.sidebar.radio[0].set_value('Prediction Results').run()
-    included = next(frame.value for frame in app.dataframe if 'Likelihood power' in frame.value.columns)
+    assert not next(b for b in app.button if b.label == 'Generate prediction').disabled
     app.sidebar.radio[0].set_value('Review evidence').run()
     next(x for x in app.radio if x.label == 'Relevance decision').set_value('Uncertain').run()
     app.sidebar.radio[0].set_value('Prediction Results').run()
-    uncertain = next(frame.value for frame in app.dataframe if 'Likelihood power' in frame.value.columns)
     assert not app.exception and not app.error
-    assert uncertain['Discounted patients'].sum() == pytest.approx(included['Discounted patients'].sum() * .5)
     assert not next(b for b in app.button if b.label == 'Generate prediction').disabled
-    captions = ' '.join(x.value for x in app.caption)
-    assert 'absolute likelihood powers' in captions
-    assert 'does not halve patient counts' not in captions
-    next(x for x in app.selectbox if x.label == 'Curve aggregation').set_value('Average of article posterior curves (Method 1)').run()
+    assert not any('historical contributions' in e.label for e in app.expander)
+    assert not any('Method ' in x.value for x in app.caption)
+    app.radio(key='workflow_formula_aggregation').set_value('average').run()
     app.sidebar.radio[0].set_value('Review evidence').run()
-    assert any('does not halve patient counts' in x.value for x in app.caption)
-    assert any('normalized_weight' in frame.value.columns for frame in app.dataframe)
+    assert not any('does not halve patient counts' in x.value for x in app.caption)
+    assert not app.dataframe and not app.json
+    assert next(x for x in app.radio if x.label=='Relevance decision').value=='Uncertain'

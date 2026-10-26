@@ -60,12 +60,20 @@ def test_transport_preserves_swapped_manual_mapping_and_source_joint_interaction
     assert result['contributors'][0]['mapping']['pairs'] == {'A': 'B', 'B': 'A'}
 
 
-def test_product_source_interactions_cannot_silently_move_beyond_first_three_targets():
+def test_product_source_interactions_preserved_under_permutation_of_any_target_slots():
     scope, arrays, manifest, target = product_fixture(4)
     target.mapping_overrides = {scope.scope_id: {'A': 'D', 'B': 'A', 'C': 'B', 'D': 'C'}}
     result = transport_joint_posteriors([(scope, arrays, manifest)], target, backend='logistic_product', draw_count=3)
-    assert result['status'] == 'no_similarity_support'
-    assert 'Revise the mapping or drug order' in result['excluded'][0]['reason']
+    assert result['status'] == 'fitted'
+    assert not result['excluded']
+    from phase1_prediction.multidrug.math import product_logistic_risk
+    # Source A,B,C,D correspond to target B,C,D,A, including the fourth slot.
+    r = np.array([[p.doses[name]/50 for name in ('B', 'C', 'D', 'A')]
+                  for p in target.points])
+    for row, trace in zip(result['posterior_draws'], result['provenance']):
+        c, m = trace['chain'], trace['draw']
+        np.testing.assert_allclose(row, product_logistic_risk(
+            arrays['alpha'][c, m], arrays['log_b'][c, m], r, arrays['eta'][c, m]))
 
 
 def test_background_exposure_uses_binary_coordinate_and_cannot_invent_numeric_axis():
@@ -89,7 +97,7 @@ def test_background_exposure_uses_binary_coordinate_and_cannot_invent_numeric_ax
         point.doses['B'] = 30.
     rejected = transport_joint_posteriors([(scope, arrays, manifest)], target, backend='logistic_product', draw_count=5)
     assert rejected['status'] == 'no_similarity_support'
-    assert 'numeric source axis' in rejected['excluded'][0]['reason']
+    assert 'numeric source' in rejected['excluded'][0]['reason']
 
 
 def test_extreme_product_coordinates_fail_explicitly_instead_of_saving_nan():

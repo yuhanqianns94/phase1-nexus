@@ -160,40 +160,58 @@ def test_web_json_form_switch_and_navigation_preserve_edits(tmp_path,monkeypatch
     assert actual['profile']['windows']==target['profile']['windows']
 
 
-def test_web_scope_selection_shared_across_methods_and_invalidates_outputs(tmp_path,monkeypatch):
+def test_web_article_selection_keeps_its_groups_across_methods_and_invalidates_outputs(tmp_path,monkeypatch):
     from test_prediction_pipeline import _article
     from types import SimpleNamespace
     from phase1_web import multidrug_app
     _article(tmp_path,'PMC123',rows=[(.1,3,0),(.3,6,2)])
     _article(tmp_path,'PMC456',rows=[(.1,3,0),(.3,6,2)])
+    scopes,diagnostics=multidrug_app.load_model_library([tmp_path])
+    first=next(scope for scope in scopes if scope.document_id=='PMC123')
+    extra=first.model_copy(update={'scope_id':first.scope_id+'_second'})
+    monkeypatch.setattr(multidrug_app,'load_model_library',lambda *a,**kw:([*scopes,extra],diagnostics))
+    original_preview=multidrug_app.preview_planned
+    def preview_with_two_groups(*args,**kwargs):
+        preview=original_preview(*args,**kwargs)
+        row=next(row for row in preview['selected_series'] if row['document_id']=='PMC123')
+        preview['selected_series'].append({**row,'series_key':extra.scope_id})
+        return preview
+    monkeypatch.setattr(multidrug_app,'preview_planned',preview_with_two_groups)
     monkeypatch.setenv('PHASE1_V3_EXTRACTION_ROOTS',str(tmp_path))
     monkeypatch.setenv('PHASE1_V3_STATE_ROOT',str(tmp_path/'state'))
     app=AppTest.from_file(Path(__file__).parents[1]/'phase1_web/app.py',default_timeout=30).run()
-    draft=example_target();draft['drugs'][0]['name']='IPH2101'
+    draft=target_from_scope(first).model_dump(mode='json')
     app.session_state['multidrug_target_text']=json.dumps(draft)
     app.sidebar.radio[0].set_value('Review evidence').run()
     next(x for x in app.button if x.label=='Find matching articles').click().run()
-    selector=next(x for x in app.multiselect if x.label=='Included source model scopes')
-    chosen=selector.value[:1]
+    selector=next(x for x in app.multiselect if x.label=='Articles to use')
+    assert selector.value==['PMC123','PMC456']
+    chosen=['PMC123']
     selector.set_value(chosen).run()
+    assert set(app.session_state['multidrug_review_state']['included'])=={first.scope_id,extra.scope_id}
     app.sidebar.radio[0].set_value('Prediction Results').run()
-    next(x for x in app.selectbox if x.label=='Curve aggregation').set_value('Average of article posterior curves (Method 1)').run()
+    app.radio(key='workflow_formula_aggregation').set_value('average').run()
     app.sidebar.radio[0].set_value('Review evidence').run()
-    assert next(x for x in app.multiselect if x.label=='Included source model scopes').value==chosen
+    assert next(x for x in app.multiselect if x.label=='Articles to use').value==chosen
     app.sidebar.radio[0].set_value('Prediction Results').run()
     fake={'run_id':'prediction_new','methods':{},'target':example_target()}
-    monkeypatch.setattr(multidrug_app,'predict',lambda *a,**kw:SimpleNamespace(to_dict=lambda:fake))
+    calls=[]
+    def capture_prediction(*args,**kwargs):
+        calls.append(kwargs)
+        return SimpleNamespace(to_dict=lambda:fake)
+    monkeypatch.setattr(multidrug_app,'predict',capture_prediction)
     monkeypatch.setattr(multidrug_app,'_result',lambda *a,**kw:None)
     app.session_state['multidrug_prediction']={'run_id':'prediction_old'}
     app.session_state['multidrug_simulation']={'prediction_run_id':'prediction_old'}
     app.session_state['multidrug_search']={'prediction_run_id':'prediction_old'}
     next(x for x in app.button if x.label=='Generate prediction').click().run()
+    assert set(calls[0]['include_series_keys'])=={first.scope_id,extra.scope_id}
     assert app.session_state['multidrug_prediction']['run_id']=='prediction_new'
     assert 'multidrug_simulation' not in app.session_state and 'multidrug_search' not in app.session_state
     app.session_state['multidrug_simulation']={'prediction_run_id':'prediction_new'}
     app.sidebar.radio[0].set_value('Review evidence').run()
-    selector=next(x for x in app.multiselect if x.label=='Included source model scopes')
-    selector.set_value([r['series_key'] for r in app.session_state['multidrug_preview']['selected_series']]).run()
+    selector=next(x for x in app.multiselect if x.label=='Articles to use')
+    selector.set_value(['PMC123','PMC456']).run()
     assert not app.session_state['multidrug_prediction']
     assert not app.session_state['multidrug_results']
     assert 'multidrug_simulation' not in app.session_state

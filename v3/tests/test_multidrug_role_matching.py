@@ -49,18 +49,22 @@ def test_first_or_primary_target_can_match_a_source_partner(role):
     mapping = match_target(target, scope)
     assert mapping['pairs'] == {'A': 'E'}
     assert mapping['details'][0]['source_role'] == 'partner'
-    assert mapping['details'][0]['role_rule'] == 'roles_not_scored'
+    assert mapping['details'][0]['role_rule'] == 'other_drug_fallback'
 
 
 @pytest.mark.parametrize('backend', ['logistic'])
-def test_three_article_cross_role_preview_and_assembly_agree(backend, monkeypatch):
+def test_focal_preview_and_legacy_full_assembly_use_automatic_matching(backend, monkeypatch):
     from phase1_prediction.multidrug import service
     entries, target = three_papers(backend)
     monkeypatch.setattr(service, 'load_model_library', lambda *a, **kw:
                         ([s for s, _, _ in entries], {'notices': []}))
     library = SimpleNamespace(source_roots=[], evidence_policy='resolved', review_policy='extracted')
     rows = preview(library, target)['selected_series']
-    mappings = {r['document_id']: r['mapping'] for r in rows}
+    preview_mappings = {r['document_id']: r['mapping'] for r in rows}
+    # Current web prediction varies A only; B is fixed treatment context.
+    assert {doc: m['pairs'] for doc, m in preview_mappings.items()} == {
+        'paper1': {'A': 'D'}, 'paper2': {'A': 'E'}, 'paper3': {}}
+    mappings = {s.document_id: match_target(target, s) for s, _, _ in entries}
     assert {doc: m['pairs'] for doc, m in mappings.items()} == {
         'paper1': {'A': 'D'},
         'paper2': {'A': 'E', 'B': 'F'},
@@ -112,3 +116,55 @@ def test_role_does_not_score_but_manual_mapping_remains_a_constraint():
     target.mapping_overrides[scope.scope_id]['B'] = 'E'
     with pytest.raises(ValueError, match='Invalid target mapping override'):
         match_target(target, scope)
+
+
+def test_supported_primary_precedes_exact_identity_partner_without_inflating_score():
+    entries, target = three_papers()
+    scope = entries[0][0]
+    target.drugs = target.drugs[:1]
+    # D shares mechanism etc.; partner A is the same named drug.
+    scope.drugs[1].name = 'A'
+    scope.drugs[1].profile = profile('A', 'alpha', 'partner')
+    result = match_target(target, scope)
+    assert result['pairs'] == {'A': 'D'}
+    detail = result['details'][0]
+    assert detail['role_rule'] == 'primary_investigated_first'
+    assert 0 < detail['affinity'] < 1
+    scope.drugs = scope.drugs[:1]
+    scope.drugs[0].research_role = 'background'
+    without_role_priority = match_target(target, scope)
+    assert without_role_priority['details'][0]['affinity'] == detail['affinity']
+    assert without_role_priority['score'] == result['score']
+
+
+def test_same_drug_and_alias_take_priority_among_coprimary_drugs():
+    entries, target = three_papers()
+    scope = entries[0][0]
+    target.drugs = target.drugs[:1]
+    # Exact identity has sparse features; the other co-primary has rich matches.
+    scope.drugs[1].research_role = scope.drugs[0].research_role = 'co_primary'
+    scope.drugs[1].profile = {'name': scope.drugs[1].name, 'aliases': ['A']}
+    assert match_target(target, scope)['pairs'] == {'A': scope.drugs[1].model_drug_id}
+
+
+def test_features_choose_among_coprimary_drugs_independent_of_order_or_rank():
+    entries, target = three_papers()
+    scope = entries[0][0]
+    target.drugs = target.drugs[:1]
+    scope.drugs[1].research_role = scope.drugs[0].research_role = 'co_primary'
+    # Both eligible, but the second has the closer target/mechanism profile.
+    scope.drugs[0].profile = profile('D', 'gamma', 'co_primary')
+    scope.drugs[0].profile['classes'] = ['alpha']
+    scope.drugs[1].profile = profile('C', 'alpha', 'co_primary')
+    assert match_target(target, scope)['pairs'] == {'A': 'C'}
+    scope.drugs.reverse()
+    assert match_target(target, scope)['pairs'] == {'A': 'C'}
+
+
+def test_unsupported_primary_does_not_create_a_match():
+    entries, target = three_papers()
+    scope = entries[2][0]
+    target.drugs = target.drugs[:1]
+    result = match_target(target, scope)
+    assert not result['pairs']
+    assert result['unmatched_target_ids'] == ['A']

@@ -67,9 +67,11 @@ def test_removing_selected_drug_reconciles_explorer_axes(tmp_path, monkeypatch, 
     *_, target = fixture()
     app = _target_app(tmp_path, monkeypatch, target.model_dump())
     app.sidebar.radio[0].set_value('Prediction Results').run()
-    app.radio(key='explore_goal').set_value('Explore two drugs' if len(axes)==2 else 'Vary one drug with fixed companions').run()
+    app.session_state['explore_axes'] = axes  # Migrate stale multi-axis selections as well.
+    app.run()
+    assert len(app.multiselect(key='explore_axes').value) == 1
     app.radio(key='explore_mode').set_value('Relative-dose exploration').run()
-    app.multiselect(key='explore_axes').set_value(axes).run()
+    app.multiselect(key='explore_axes').set_value(axes[:1]).run()
     if 'A' in axes:
         app.number_input(key='explore_A_lo').set_value(.7).run()
     app.sidebar.radio[0].set_value('Target Trial').run()

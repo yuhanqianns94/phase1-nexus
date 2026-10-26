@@ -19,31 +19,31 @@ RISK_PRESETS = {
         'label': 'More regularized',
         'description': 'Smaller parameter variation and interactions.',
         'values': {'intercept_sd': 1.5, 'log_slope_sd': .5, 'pair_sd': .5,
-                   'triple_sd': .25, 'missing_log_dose_sd': .75},
+                   'combination_sd': .25, 'missing_log_dose_sd': .75},
     },
     'broad': {
         'label': 'Broader parameter variation',
         'description': 'Allows more varied slopes and interactions. Broader does not mean noninformative or more toxic.',
         'values': {'intercept_sd': 3., 'log_slope_sd': 1.25, 'pair_sd': 1.5,
-                   'triple_sd': .75, 'missing_log_dose_sd': 1.25},
+                   'combination_sd': .75, 'missing_log_dose_sd': 1.25},
     },
 }
 
 POWER_PRESETS = {
     'default': {
         'label': 'Default borrowing (recommended / default)',
-        'description': 'The existing Method 3 defaults: strength 1, patient budget 30, heterogeneity scale 0.5.',
-        'values': {'strength': 1., 'patient_budget': 30., 'heterogeneity_scale': .5},
+        'description': 'Default historical borrowing: strength 1, patient budget 30, intercept and log-slope heterogeneity scales 0.5.',
+        'values': {'strength': 1., 'patient_budget': 30., 'heterogeneity_scale': .5, 'slope_heterogeneity_scale': .5},
     },
     'cautious': {
         'label': 'Less historical borrowing',
-        'description': 'Strength 0.5 and patient budget 15 reduce historical outcome information; heterogeneity scale is 0.75.',
-        'values': {'strength': .5, 'patient_budget': 15., 'heterogeneity_scale': .75},
+        'description': 'Strength 0.5 and patient budget 15 reduce historical outcome information; intercept and log-slope heterogeneity scales are 0.75.',
+        'values': {'strength': .5, 'patient_budget': 15., 'heterogeneity_scale': .75, 'slope_heterogeneity_scale': .75},
     },
     'flexible': {
         'label': 'More between-study variation',
-        'description': 'Keep strength 1 and patient budget 30; allow a larger heterogeneity scale of 1.0.',
-        'values': {'strength': 1., 'patient_budget': 30., 'heterogeneity_scale': 1.},
+        'description': 'Keep strength 1 and patient budget 30; allow intercept and log-slope heterogeneity scales of 1.0.',
+        'values': {'strength': 1., 'patient_budget': 30., 'heterogeneity_scale': 1., 'slope_heterogeneity_scale': 1.},
     },
 }
 
@@ -53,7 +53,9 @@ COMMON_PRIOR_FIELDS = ('intercept_mean', 'intercept_sd', 'log_slope_mean', 'log_
 
 def active_prior_fields(backend):
     validate_backend(backend)
-    return (*COMMON_PRIOR_FIELDS, 'pair_sd', 'triple_sd')
+    if backend == 'single_drug_logistic':
+        return (*COMMON_PRIOR_FIELDS, 'combination_sd')
+    return (*COMMON_PRIOR_FIELDS, 'pair_sd')
 
 
 def canonical_prior(prior, backend):
@@ -112,12 +114,36 @@ def _cache_entry(store, fit_id):
                 'fit_id': fit_id, 'reason': str(error)}
 
 
+def _source_cache_scopes(scopes, backend):
+    """Direct cache preparation supports every reported numeric focal axis."""
+    if backend != 'single_drug_logistic':
+        return list(scopes), []
+    from .single_drug import project_scope
+    projected, notices = [], []
+    for scope in scopes:
+        if scope.lineage.get('single_drug_projection'):
+            projected.append(scope)
+            continue
+        numeric = [drug for drug in scope.drugs if drug.mode == 'numeric']
+        if not numeric:
+            notices.append({'document_id': scope.document_id, 'scope_id': scope.scope_id,
+                            'reason': 'No reported numeric focal dose axis.'})
+        for drug in numeric:
+            try:
+                projected.extend(project_scope(scope, drug.model_drug_id, exclusions=notices))
+            except ValueError as error:
+                notices.append({'document_id': scope.document_id, 'scope_id': scope.scope_id,
+                                'focal_source_id': drug.model_drug_id, 'reason': str(error)})
+    return projected, notices
+
+
 def source_cache_status(scopes, *, backend='logistic', prior=None, sampler=None, store_root=None):
     """Inspect article-local caches shared by Method 1 and Method 2 targets."""
     from .service import DEFAULT_STORE
     from .store import PosteriorStore, source_fit_id
     from .workflow import phase_status
     prior, sampler = canonical_prior(prior, backend), sampler or SamplerSpec()
+    scopes, notices = _source_cache_scopes(scopes, backend)
     store = PosteriorStore(DEFAULT_STORE if store_root is None else store_root)
     entries = []
     for scope in scopes:
@@ -135,6 +161,7 @@ def source_cache_status(scopes, *, backend='logistic', prior=None, sampler=None,
     counts = {status: sum(x['cache_status'] == status for x in entries) for status in
               ('ready', 'missing', 'cached_failure', 'invalid_cache', 'phase_excluded', 'no_outcomes')}
     return {'kind': 'source_posteriors', 'backend': backend, 'prior': prior.model_dump(),
+            'projection_notices': notices,
             'sampler': sampler.model_dump(), 'entries': entries, 'counts': counts,
             'ready': [x for x in entries if x['cache_status'] == 'ready'],
             'pending': [x for x in entries if x['cache_status'] == 'missing'],
@@ -148,13 +175,13 @@ def prepare_source_cache(scopes, *, backend='logistic', prior=None, sampler=None
     from .service import DEFAULT_STORE, fit_library
     from .workflow import phase_status
     prior, sampler = canonical_prior(prior, backend), sampler or SamplerSpec()
-    scopes = list(scopes)
+    scopes, notices = _source_cache_scopes(scopes, backend)
     root = DEFAULT_STORE if store_root is None else store_root
     eligible = [s for s in scopes if s.observations and phase_status(s.profile) == 'phase_i']
     _, errors = fit_library(eligible, backends=(backend,), store_root=root,
                             prior=prior, sampler=sampler, progress=progress)
     return {**source_cache_status(scopes, backend=backend, prior=prior, sampler=sampler, store_root=root),
-            'errors': errors}
+            'errors': errors, 'projection_notices': notices}
 
 
 def _target_cache_inputs(library, target, backend, prior, sampler, power_prior,
@@ -164,11 +191,16 @@ def _target_cache_inputs(library, target, backend, prior, sampler, power_prior,
     from .service import _select, native_target, DEFAULT_STORE
     from .workflow import relevance_multiplier
     target = native_target(target)
-    _target_coordinates(target)
     prior, sampler = canonical_prior(prior, backend), sampler or SamplerSpec()
     spec = power_prior if isinstance(power_prior, PowerPriorSpec) else PowerPriorSpec.model_validate(power_prior or {})
+    selection_options = {'focal_only': True} if backend == 'single_drug_logistic' else {}
     scored, diagnostics = _select(library, target, weights, threshold or 0., top_articles,
-                                  include_series_keys, exclude_series_keys)
+                                  include_series_keys, exclude_series_keys, **selection_options)
+    if backend == 'single_drug_logistic':
+        from .service import prepare_single_drug_evidence
+        scored, target, exclusions = prepare_single_drug_evidence(scored, target)
+        diagnostics = {**diagnostics, 'single_drug_exclusions': exclusions}
+    _target_coordinates(target)
     if not any(relevance_multiplier(scope.document_id, relevance_decisions) > 0 for scope, _, _ in scored):
         raise ValueError('No included Phase I evidence remains. Revise the candidate pool or relevance decisions.')
     prepared = prepare_power_prior(scored, target, spec, relevance_decisions)

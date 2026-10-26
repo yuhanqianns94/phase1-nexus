@@ -117,6 +117,16 @@ def coordinate_support(entries,target,method):
             for td in target.drugs:
                 sd=next((d for d in scope.drugs if d.model_drug_id==pairs.get(td.drug_id)),None)
                 if sd is None:continue
+                if td.drug_id == '__combination_context__':
+                    states = {e.presence for o in scope.observations for e in o.exposures
+                              if e.drug_id == sd.model_drug_id}
+                    expected = 'absent' if point.doses[td.drug_id] == 0 else 'present'
+                    if expected not in states:
+                        if states & {'mixed', 'unknown'}:
+                            missing += 1
+                        else:
+                            outside += 1
+                    continue
                 values=[]
                 for o in scope.observations:
                     for e in o.exposures:
@@ -129,5 +139,9 @@ def coordinate_support(entries,target,method):
         if not mappings:status='Component assembly: model-derived cross-article combination'
         elif method.get('evidence_construction') == 'component_assembly':
             status += '; assembled combination is model-derived'
+        if method.get('backend') == 'single_drug_logistic':
+            status = ('Outside at least one source focal-dose/context range' if outside else
+                      'Source focal-dose/context information incomplete' if missing else
+                      'Within source focal-dose and treatment-context ranges')
         result.append({'level_id':point.level_id,'support':status,'outside_source_axes':outside,'missing_source_axes':missing})
     return result

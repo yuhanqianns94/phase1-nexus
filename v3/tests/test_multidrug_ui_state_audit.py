@@ -110,51 +110,68 @@ def test_explicit_draft_settings_rebase_controls_on_other_pages(tmp_path,monkeyp
     app.sidebar.radio[0].set_value('Prediction Results').run()
     assert app.number_input(key='workflow_target_dlt').value==.25
     app.sidebar.radio[0].set_value('Review evidence').run()
-    assert app.number_input(key='workflow_min_drug_similarity').value==.20
+    assert app.number_input(key='workflow_min_clinical_coverage').value==0.
     app.sidebar.radio[0].set_value('Target Trial').run()
     next(c for c in app.checkbox if c.label=='Advanced JSON editor').check().run()
     draft=json.loads(app.text_area(key='multidrug_target_json_editor').value)
-    draft.update(target_dlt=.35,minimum_drug_similarity=.65)
+    draft.update(target_dlt=.35,minimum_clinical_coverage=.65)
     app.text_area(key='multidrug_target_json_editor').set_value(json.dumps(draft)).run()
     app.sidebar.radio[0].set_value('Review evidence').run()
-    assert app.number_input(key='workflow_min_drug_similarity').value==.65
+    assert app.number_input(key='workflow_min_clinical_coverage').value==.65
     app.sidebar.radio[0].set_value('Prediction Results').run()
     assert app.number_input(key='workflow_target_dlt').value==.35
     saved=json.loads((tmp_path/'state'/'multidrug_target_draft.json').read_text())
-    assert saved['minimum_drug_similarity']==.65 and saved['target_dlt']==.35
+    assert saved['minimum_clinical_coverage']==.65 and saved['target_dlt']==.35
     assert not app.exception and not app.error
 
 
-def test_review_only_selected_scopes_and_preserve_deselected_article_decisions(tmp_path,monkeypatch):
+def test_review_only_selected_articles_and_preserve_deselected_article_decisions(tmp_path,monkeypatch):
     app=target_app(tmp_path,monkeypatch,articles=2)
     app.sidebar.radio[0].set_value('Review evidence').run()
     next(r for r in app.radio if r.label=='Evidence screening').set_value('Review article abstracts').run()
     next(b for b in app.button if b.label=='Find matching articles').click().run()
-    selector=next(s for s in app.multiselect if s.label=='Included source model scopes')
+    selector=next(s for s in app.multiselect if s.label=='Articles to use')
     first,second=selector.value
     radios=[r for r in app.radio if r.label=='Relevance decision']
     radios[0].set_value('Include').run()
     app.sidebar.radio[0].set_value('Prediction Results').run()
     assert next(b for b in app.button if b.label=='Generate prediction').disabled
     app.sidebar.radio[0].set_value('Review evidence').run()
-    next(s for s in app.multiselect if s.label=='Included source model scopes').set_value([first]).run()
+    next(s for s in app.multiselect if s.label=='Articles to use').set_value([first]).run()
     app.sidebar.radio[0].set_value('Prediction Results').run()
     assert not next(b for b in app.button if b.label=='Generate prediction').disabled
     app.sidebar.radio[0].set_value('Review evidence').run()
-    budget=next(d.value for d in app.dataframe if 'normalized_weight' in d.value.columns)
-    assert list(budget.document_id)==['PMC123']
-    assert list(budget.normalized_weight)==[1.]
-    next(s for s in app.multiselect if s.label=='Included source model scopes').set_value([second]).run()
+    from phase1_prediction.multidrug.workflow import article_budgets
+    review=app.session_state['multidrug_review_state']
+    rows=[row for row in app.session_state['multidrug_preview']['selected_series'] if row['series_key'] in review['included']]
+    budget=article_budgets(rows,review['decisions'])
+    assert [row['document_id'] for row in budget]==['PMC123']
+    assert [row['normalized_weight'] for row in budget]==[1.]
+    assert not app.dataframe and not app.json
+    next(s for s in app.multiselect if s.label=='Articles to use').set_value([second]).run()
     app.sidebar.radio[0].set_value('Prediction Results').run()
     assert next(b for b in app.button if b.label=='Generate prediction').disabled
     app.sidebar.radio[0].set_value('Review evidence').run()
     next(r for r in app.radio if r.label=='Relevance decision').set_value('Uncertain').run()
     record=json.loads(next((tmp_path/'state'/'relevance_reviews').glob('*.json')).read_text())
     assert record['decisions']=={'PMC123':'Include','PMC456':'Uncertain'}
-    next(s for s in app.multiselect if s.label=='Included source model scopes').set_value([first,second]).run()
+    next(s for s in app.multiselect if s.label=='Articles to use').set_value([first,second]).run()
     assert [r.value for r in app.radio if r.label=='Relevance decision']==['Include','Uncertain']
-    budget=next(d.value for d in app.dataframe if 'normalized_weight' in d.value.columns)
-    assert list(budget.normalized_weight)==pytest.approx([2/3,1/3])
+    review=app.session_state['multidrug_review_state']
+    budget=article_budgets(app.session_state['multidrug_preview']['selected_series'],review['decisions'])
+    assert [row['normalized_weight'] for row in budget]==pytest.approx([2/3,1/3])
+    assert not app.dataframe and not app.json
+    assert not any(widget.label=='Adjust drug correspondence (advanced)' for widget in app.expander)
+    next(s for s in app.multiselect if s.label=='Articles to use').set_value([]).run()
+    assert not [r for r in app.radio if r.label=='Relevance decision']
+    assert not app.session_state['multidrug_review_state']['ready']
+    assert next(b for b in app.button if b.label=='Continue to risk curves').disabled
+    app.sidebar.radio[0].set_value('Prediction Results').run()
+    assert next(b for b in app.button if b.label=='Generate prediction').disabled
+    app.sidebar.radio[0].set_value('Review evidence').run()
+    assert next(s for s in app.multiselect if s.label=='Articles to use').value==[]
+    next(s for s in app.multiselect if s.label=='Articles to use').set_value([first,second]).run()
+    assert [r.value for r in app.radio if r.label=='Relevance decision']==['Include','Uncertain']
     assert not app.error and not app.exception
 
 
@@ -162,6 +179,8 @@ def test_boin_settings_invalidate_only_affected_outputs_and_survive_navigation(t
     app=app_with_library(tmp_path,monkeypatch)
     scope,arrays,manifest,target=fixture(1)
     method=transport_joint_posteriors([(scope,arrays,manifest)],target,draw_count=4)
+    # This state test reuses a fixed probability matrix under the active UI family.
+    method['backend'] = 'single_drug_logistic'
     prediction={'run_id':'prediction_ui_audit','model_version':'v3_multidrug_bayes_1',
         'target':target.model_dump(mode='json'),'methods':{method['synthesis']:method},'evidence_contract':{}}
     app.session_state['multidrug_prediction']=prediction
@@ -169,23 +188,28 @@ def test_boin_settings_invalidate_only_affected_outputs_and_survive_navigation(t
     app.sidebar.radio[0].set_value('OC Simulation').run()
     app.number_input(key='boin_design_scenarios').set_value(1).run()
     app.number_input(key='boin_design_repetitions').set_value(2).run()
-    app.multiselect(key='boin_design_search_sizes').set_value([12]).run()
     next(b for b in app.button if b.label=='Run BOIN').click().run()
+    app.radio(key='boin_design_task').set_value('Compare multiple designs').run()
+    app.multiselect(key='boin_design_search_sizes').set_value([12,18]).run()
     next(b for b in app.button if b.label=='Compare designs').click().run()
     simulation_id=app.session_state['multidrug_simulation']['run_id']
     search_id=app.session_state['multidrug_search']['run_id']
-    app.sidebar.radio[0].set_value('Prediction Results').run()
+    app.sidebar.radio[0].set_value('Download results').run()
     app.sidebar.radio[0].set_value('OC Simulation').run()
     assert app.number_input(key='boin_design_scenarios').value==1
-    assert app.multiselect(key='boin_design_search_sizes').value==[12]
+    assert app.multiselect(key='boin_design_search_sizes').value==[12,18]
     assert app.session_state['multidrug_simulation']['run_id']==simulation_id
     assert app.session_state['multidrug_search']['run_id']==search_id
+    app.radio(key='boin_design_task').set_value('Simulate one design').run()
+    assert not any(b.label=='Compare designs' for b in app.button)
     app.number_input(key='boin_design_nmax').set_value(60).run()
     assert 'multidrug_simulation' not in app.session_state
     assert app.session_state['multidrug_search']['run_id']==search_id
     next(b for b in app.button if b.label=='Run BOIN').click().run()
     assert app.session_state['multidrug_simulation']['settings']['max_sample_size']==60
-    app.multiselect(key='boin_design_search_sizes').set_value([18]).run()
+    app.radio(key='boin_design_task').set_value('Compare multiple designs').run()
+    assert not any(b.label=='Run BOIN' for b in app.button)
+    app.multiselect(key='boin_design_search_sizes').set_value([18,24]).run()
     assert 'multidrug_search' not in app.session_state
     assert 'multidrug_simulation' in app.session_state
     next(b for b in app.button if b.label=='Compare designs').click().run()

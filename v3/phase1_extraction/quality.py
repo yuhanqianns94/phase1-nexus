@@ -11,7 +11,7 @@ from __future__ import annotations
 from collections import Counter
 from typing import Any
 
-from .models import DocumentIR, ReportedExtraction, ResolvedExtraction
+from .models import DocumentIR, ReportedExtraction, ResolvedExtraction, has_retired_r3_provenance
 from .exposures import exposure_problems
 
 
@@ -255,18 +255,10 @@ def _audit_resolved_rows(extraction: ReportedExtraction, resolved: ResolvedExtra
             add("unknown_resolved_reference", "Resolved row has an unknown cohort or scope", [row.curve_row_id])
             continue
         grouped.setdefault((row.cohort_id, _scope_identity(scope)), []).append(row)
-        if row.denominator_basis == "design_inferred":
-            reported = [c for c in extraction.population_counts
-                        if c.cohort_id == row.cohort_id and c.study_id == row.study_id
-                        and c.role in {"treated", "dlt_evaluable", "paired_dlt_denominator"}
-                        and c.reporting_status == "reported" and c.reported_value is not None
-                        and c.result_scope_id in scopes
-                        and _scope_identity(scopes[c.result_scope_id]) == _scope_identity(scope)
-                        and c.window_id in {None, row.window_id}]
-            if any(c.reported_value != row.n for c in reported):
-                add("design_denominator_conflicts_with_reported_count",
-                    "Design-inferred N disagrees with a reported count for this cohort in the same scope context",
-                    [row.curve_row_id, *[c.count_id for c in reported]])
+        if has_retired_r3_provenance(row):
+            add("retired_r3_denominator", "Design-inferred denominators are no longer permitted",
+                [row.curve_row_id])
+            continue
         observations = [o for o in extraction.dlt_observations if o.result_scope_id == scope.result_scope_id]
         if row.y is None and _r2_allowed(
             cohort=cohort, scope=scope, observations=[o for o in observations if o.cohort_id == row.cohort_id],

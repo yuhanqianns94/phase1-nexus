@@ -73,6 +73,7 @@ def test_unknown_use_is_not_present_unknown_dose():
 def test_clinical_preview_does_not_require_or_create_doses(tmp_path):
     _article(tmp_path,'PMC123',rows=[(.1,3,0),(.3,6,2)])
     draft=blank_target();draft['drugs']=[{'drug_id':'new','name':'A','profile':{},'research_role':'primary'}]
+    draft['minimum_clinical_coverage']=0.  # This test isolates dose-optional preview, not the coverage gate.
     original=copy.deepcopy(draft)
     result=preview_planned(load_evidence_library([tmp_path]),draft)
     assert result['selected_series'] and result['prediction_ready'] is False
@@ -174,21 +175,47 @@ def test_extraction_rejects_invalid_logic_and_nonpositive_schedule():
     with pytest.raises(ValueError):StructuredSchedule(frequency_count=0)
 
 
-def test_manual_correspondence_is_saved_from_named_controls(tmp_path,monkeypatch):
+@pytest.mark.parametrize('review_mode', ['Automatic inclusion', 'Review article abstracts'])
+def test_web_correspondence_is_automatic_without_explanation_panel(tmp_path,monkeypatch,review_mode):
     app=app_for(tmp_path,monkeypatch)
     from test_multidrug_ui_state_audit import seed_test_plan
     seed_test_plan(app,tmp_path)
     app.sidebar.radio[0].set_value('Review evidence').run()
+    app.radio(key='workflow_screening').set_value(review_mode).run()
     next(b for b in app.button if b.label=='Find matching articles').click().run()
-    selector=next(x for x in app.selectbox if x.label.startswith('Source for '))
-    # The underlying values are IDs; only readable names are shown to users.
     row=app.session_state['multidrug_preview']['selected_series'][0]
-    target_id,source_id=next(iter(row['mapping']['pairs'].items()))
-    selector.set_value(source_id).run()
-    next(b for b in app.button if b.label=='Apply correspondence').click().run()
+    assert row['mapping']['pairs']
+    assert not any(x.label.startswith('Source for ') or x.label=='Source regimen to map' for x in app.selectbox)
+    assert not any(x.label=='Apply correspondence' for x in app.button)
+    labels={x.label for x in app.expander}
+    assert not labels & {'Adjust drug correspondence (advanced)', 'Detailed comparison evidence'}
+    assert 'How automatic drug matching works' not in labels
+    assert not any('Drug matching is automatic:' in x.value for x in app.caption)
+    assert not app.exception and not app.error
+
+
+def test_legacy_override_is_backed_up_and_cleared_before_matching(tmp_path,monkeypatch):
+    app=app_for(tmp_path,monkeypatch)
+    from test_multidrug_ui_state_audit import seed_test_plan
+    seed_test_plan(app,tmp_path)
+    old=json.loads(app.session_state['multidrug_target_text'])
+    old['mapping_overrides']={'old-scope': {'old-target': 'old-source'}}
+    app.session_state['multidrug_target_text']=json.dumps(old)
+    app.sidebar.radio[0].set_value('Review evidence').run()
     assert not app.exception and not app.error
     saved=json.loads(app.session_state['multidrug_target_text'])
-    assert saved['mapping_overrides'][row['series_key']][target_id]==source_id
+    assert saved['mapping_overrides']=={}
+    backup,=list((tmp_path/'state').glob('multidrug_target_draft.before_automatic_*.json'))
+    assert json.loads(backup.read_text())==old
+    assert json.loads((tmp_path/'state'/'multidrug_target_draft.json').read_text())==saved
+    next(b for b in app.button if b.label=='Find matching articles').click().run()
+    assert app.session_state['multidrug_preview']['selected_series'][0]['mapping']['pairs']
+    # Imports through the JSON editor must not reintroduce hidden overrides.
+    app.sidebar.radio[0].set_value('Target Trial').run()
+    next(c for c in app.checkbox if c.label=='Advanced JSON editor').check().run()
+    app.text_area(key='multidrug_target_json_editor').set_value(json.dumps(old)).run()
+    assert not json.loads(app.session_state['multidrug_target_text'])['mapping_overrides']
+    assert not app.exception and not app.error
 
 
 def test_explicit_window_start_synonyms_compare_equally():

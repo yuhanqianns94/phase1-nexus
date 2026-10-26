@@ -53,3 +53,53 @@ def test_class_rename_uses_same_model_rules(tmp_path):
     second, _ = build_article_scopes(write_article(tmp_path / 'b', e))
     assert [d.mode for d in first[0].drugs] == [d.mode for d in second[0].drugs]
     assert [(o.y, o.n) for o in first[0].observations] == [(o.y, o.n) for o in second[0].observations]
+
+
+def test_source_primary_without_rank_is_retained_with_evidence():
+    e = extraction()
+    main = e.cohorts[0].exposures[1]
+    main.research_role = 'primary'
+    main.priority_basis = 'source_reported'
+    main.priority_reason = 'The stated objective investigates this fixed-dose agent.'
+    main.priority_evidence = main.evidence
+    # Explicitly identify the escalated drug as a partner to that objective.
+    for c in e.cohorts:
+        c.exposures[0].research_role = 'partner'
+        c.exposures[0].priority_basis = 'source_reported'
+    # A previously generated ordering cannot outweigh source evidence.
+    stale = e.cohorts[1].exposures[1]
+    stale.research_role = 'background'
+    stale.priority_basis = 'deterministic_fallback'
+    stale.research_priority = 2
+    ordered = apply_drug_ordering(e)
+    assert ordered.cohorts[0].exposures[0].name_raw == 'EIASD'
+    for c in ordered.cohorts:
+        selected = next(x for x in c.exposures if x.name_raw == 'EIASD')
+        assert selected.research_role == 'primary'
+        assert selected.priority_basis == 'source_reported'
+        assert selected.priority_evidence == main.priority_evidence
+    assert clinical_payload(ordered) == clinical_payload(e)
+    assert apply_drug_ordering(ordered) == ordered
+
+
+def test_joint_main_drugs_are_all_coprimary_and_order_is_stable():
+    e = extraction()
+    for c in e.cohorts:
+        for record in c.exposures:
+            record.research_role = 'primary'
+            record.priority_basis = 'source_reported'
+    original = ordered_catalog(e, 'regimen')
+    assert all(row['research_role'] == 'co_primary' for row in original)
+    for c in e.cohorts:
+        c.exposures.reverse()
+    e.cohorts.reverse()
+    assert ordered_catalog(e, 'regimen') == original
+
+
+def test_explicit_unclear_role_is_not_promoted_by_dose_variation():
+    e = extraction()
+    for c in e.cohorts:
+        c.exposures[0].priority_basis = 'source_reported'
+        c.exposures[0].priority_reason = 'Research objective is not available.'
+    catalog = ordered_catalog(e, 'regimen')
+    assert all(row['research_role'] == 'unclear' for row in catalog)

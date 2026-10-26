@@ -54,13 +54,19 @@ def ordered_catalog(extraction, regimen_id, exposures=()):
     values = []
     for key, records in groups.items():
         component = components.get(key)
-        annotated = [r for r in [component, *records] if r and r.research_priority is not None]
-        annotated.sort(key=lambda r: (r.priority_basis != "human_confirmed", r.research_priority))
+        annotated = [r for r in [component, *records] if r and
+                     (r.research_priority is not None or r.research_role != 'unclear'
+                      or r.priority_basis in {'human_confirmed', 'source_reported'})]
+        basis_rank = {'human_confirmed': 0, 'source_reported': 1, 'unknown': 2, 'deterministic_fallback': 3}
+        annotated.sort(key=lambda r: (basis_rank[r.priority_basis], r.research_role == 'unclear',
+                                      r.research_priority or 10**9))
         chosen = annotated[0] if annotated else None
         roles = {r.role for r in [component, *records] if r}
-        main = key in varying or "escalated" in roles
-        role = (chosen.research_role if chosen and chosen.research_role != "unclear" else
-                "primary" if main else "partner" if roles & {"fixed_backbone", "combination_partner"} else "background")
+        main = key in varying or "escalated" in roles or bool(component and component.participates_in_dose_finding)
+        role = (chosen.research_role if chosen and (chosen.research_role != "unclear" or
+                chosen.priority_basis in {'human_confirmed', 'source_reported'}) else
+                "primary" if main else "partner" if roles & {"fixed_backbone", "combination_partner"} else
+                "background" if roles & {"conditioning", "supportive", "radiation", "maintenance"} else "unclear")
         name = (names.get(component.intervention_id) if component else None) or next((r.name_raw for r in records), key)
         values.append({"model_drug_id": key, "name": name, "research_role": role,
                        "research_priority": chosen.research_priority if chosen else None,

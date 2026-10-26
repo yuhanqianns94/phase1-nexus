@@ -21,7 +21,7 @@ services:
       - key: PHASE1_DATA_ROOT
         value: /var/data/phase1
       - key: PHASE1_SHARED_BUNDLE_URL
-        value: ""
+        value: https://github.com/yuhanqianns94/phase1-nexus/releases/download/shared-library-20261026/phase1-shared-library-20261026.tar.gz
       - key: PHASE1_SHARED_BUNDLE_SHA256
-        value: ""
+        value: 2f67d9a0f29aedcb2e969701240133f7de4ddd4937806a8d0bce9ed335bf4d67
       # Deliberately no OPENAI_API_KEY, provider credentials, or local .env file.

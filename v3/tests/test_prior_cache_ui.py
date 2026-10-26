@@ -154,7 +154,7 @@ def test_target_render_reuses_mappings_and_borrowing_settings_without_fitting(mo
     assert len(scored) == 1 and scored[0][0].scope_id == 'keep'
     assert scored[0][1] == {'manual': 'preserved'} and scored[0][2] == pytest.approx(.8)
     assert target is args['target'] and decisions == args['relevance_decisions']
-    assert spec.model_dump() == args['power_settings']
+    assert spec.model_dump() == power_prior.PowerPriorSpec.model_validate(args['power_settings']).model_dump()
     assert all(call[0] == {'sentinel': 'prepared once'} for call in status_calls)
     assert len(st.tables[-1]) == 3
     assert st.session_state['multidrug_prediction'] == {'sentinel': 'keep current prediction'}

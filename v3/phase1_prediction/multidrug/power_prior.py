@@ -26,7 +26,7 @@ from .transport import _base_result, _summary, flat_samples
 from .workflow import relevance_multiplier
 
 METHOD = 'target_power_prior'
-POWER_PRIOR_VERSION = 'fixed_partial_power_prior_v3'
+POWER_PRIOR_VERSION = 'fixed_partial_power_prior_v6_random_slope'
 
 
 class PowerPriorSpec(Contract):
@@ -34,6 +34,7 @@ class PowerPriorSpec(Contract):
     strength: float = Field(default=1., ge=0, le=1)
     patient_budget: float | None = Field(default=30., gt=0)
     heterogeneity_scale: float = Field(default=.5, gt=0)
+    slope_heterogeneity_scale: float = Field(default=.5, gt=0)
 
 
 def target_signature(target):
@@ -45,6 +46,10 @@ def target_signature(target):
     """
     profile = copy.deepcopy(target.profile)
     profile.pop('planning', None)
+    if profile.get('single_drug_projection'):
+        projection = profile['single_drug_projection']
+        profile['single_drug_projection'] = {k: projection[k] for k in
+            ('version', 'focal_drug_id', 'companion_doses', 'combination_present') if k in projection}
     drugs = []
     for drug in target.drugs:
         item = drug.model_dump(mode='json')
@@ -54,7 +59,8 @@ def target_signature(target):
         drugs.append(item)
     return {'drugs': drugs, 'profile': profile,
             'mapping_overrides': target.mapping_overrides,
-            'minimum_drug_similarity': target.minimum_drug_similarity}
+            'minimum_drug_similarity': target.minimum_drug_similarity,
+            'minimum_clinical_coverage': target.minimum_clinical_coverage}
 
 
 def _mapped_scope(scope, target, mapping):
@@ -137,8 +143,47 @@ def prepare_power_prior(scored, target, spec, relevance_decisions=None):
                 'strength': float(strength), 'patient_count': sum(o.n for o in mapped.observations)}
         by_document.setdefault(scope.document_id, []).append(item)
     selected = []
+    for doc, items in by_document.items():
+        if not any(item['source_scope'].get('lineage', {}).get('single_drug_projection') for item in items):
+            continue
+        # Partitioned backgrounds from one original scope share one article
+        # effect and one budget. Each original cohort enters its likelihood once.
+        grouped = {}
+        for item in items:
+            original = item['source_scope'].get('lineage', {}).get('original_scope_id', item['scope_id'])
+            grouped.setdefault(original, []).append(item)
+        merged = []
+        for original, partitions in grouped.items():
+            item = copy.deepcopy(partitions[0])
+            mapped_observations, source_observations = [], []
+            cohorts, row_ids = set(), set()
+            duplicate = False
+            for part in sorted(partitions, key=lambda value: value['scope_id']):
+                for observation, source_observation in zip(part['scope']['observations'], part['source_scope']['observations']):
+                    if observation['cohort_id'] in cohorts or row_ids.intersection(observation['source_row_ids']):
+                        duplicate = True
+                        break
+                    cohorts.add(observation['cohort_id'])
+                    row_ids.update(observation['source_row_ids'])
+                    mapped_observations.append(observation)
+                    source_observations.append(source_observation)
+            if duplicate:
+                excluded.append({'document_id': doc, 'scope_id': original,
+                    'reason': 'Overlapping projected cohorts; historical patients cannot be counted twice.'})
+                continue
+            item['scope']['observations'] = mapped_observations
+            item['source_scope']['observations'] = source_observations
+            item['scope_id'] = original + '__conditional_regimen'
+            item['scope']['scope_id'] = item['scope_id']
+            item['source_scope']['scope_id'] = item['scope_id']
+            item['source_scope']['lineage']['partition_scope_ids'] = [part['scope_id'] for part in partitions]
+            item['patient_count'] = sum(observation['n'] for observation in mapped_observations)
+            merged.append(item)
+        by_document[doc] = merged
     for doc in sorted(by_document):
         candidates = sorted(by_document[doc], key=lambda x: (-x['strength'], x['scope_id']))
+        if not candidates:
+            continue
         selected.append(candidates[0])
         excluded.extend({'document_id': doc, 'scope_id': c['scope_id'],
                          'reason': 'Another complete scope from this article has higher priority; one scope per article in Method 3.'}
@@ -158,12 +203,22 @@ def power_prior_model(scopes, powers, backend, prior, spec):
     """Partial discounting: only outcome factors are powered, once per cohort."""
     parameters = sample_curve_parameters(scopes[0].drugs, backend, prior)
     tau = numpyro.sample('tau', dist.HalfNormal(spec.heterogeneity_scale))
+    if backend == 'single_drug_logistic':
+        tau_slope = numpyro.sample('tau_slope', dist.HalfNormal(spec.slope_heterogeneity_scale))
     active = [(i, scope, power) for i, (scope, power) in enumerate(zip(scopes, powers)) if power > 0]
     if active:
         z = numpyro.sample('study_z', dist.Normal(0., 1.).expand((len(active),)).to_event(1))
+        if backend == 'single_drug_logistic':
+            # Independent, non-centered article effects on log slope preserve
+            # positive dose slopes and share one effect across all its cohorts.
+            slope_z = numpyro.sample('study_slope_z', dist.Normal(0., 1.).expand((len(active),)).to_event(1))
         for j, (i, scope, power) in enumerate(active):
-            a, log_b, eta = parameters
-            shifted = (a + tau * z[j], log_b, eta)
+            if backend == 'single_drug_logistic':
+                a, log_b, eta, delta = parameters
+                shifted = (a + tau * z[j], log_b.at[0].add(tau_slope * slope_z[j]), eta, delta)
+            else:
+                a, log_b, eta = parameters
+                shifted = (a + tau * z[j], log_b, eta)
             risk = curve_risk_function(scope.drugs, backend, shifted)
             with handlers.scope(prefix=f'article_{i}'):
                 observe_scope(scope, risk, prior, likelihood_power=power)
@@ -282,6 +337,7 @@ def evaluate_power_prior(prepared, arrays, manifest, target, *, draw_count, seed
     backend = manifest['backend']
     result = _base_result(target, backend, METHOD, seed)
     result.update(target_fit_id=manifest['target_fit_id'], power_prior=prepared['spec'],
+                  power_prior_version=POWER_PRIOR_VERSION,
                   discounted_patient_count=prepared['discounted_patient_count'],
                   cap_factor=prepared['cap_factor'], inference=manifest.get('inference'),
                   sampling_diagnostics={k: manifest.get(k) for k in ('status', 'attempts', 'reason', 'elapsed_seconds')},
@@ -295,13 +351,22 @@ def evaluate_power_prior(prepared, arrays, manifest, target, *, draw_count, seed
         return result
     flat = flat_samples(arrays)
     rng = np.random.default_rng(seed)
-    intercept_key = 'alpha' if backend == 'logistic_product' else 'a'
+    intercept_key = 'alpha' if backend in {'logistic_product', 'single_drug_logistic'} else 'a'
     ids = rng.integers(0, len(flat[intercept_key]), draw_count)
     target_z = rng.normal(size=draw_count)
     u_target = flat['tau'][ids] * target_z
-    a = (flat['alpha'][ids] + u_target if backend == 'logistic_product'
+    a = (flat['alpha'][ids] + u_target if backend in {'logistic_product', 'single_drug_logistic'}
          else flat['a'][ids] + u_target[:, None])
     log_b = flat['log_b'][ids]
+    v_target = None
+    if backend == 'single_drug_logistic':
+        if 'tau_slope' not in flat:
+            raise ValueError('This historical-likelihood fit predates random slopes. Generate a new prediction.')
+        # Draw once per entire new-study curve, retaining the same slope when
+        # the frozen curve is evaluated at another grid of dose coordinates.
+        v_target = flat['tau_slope'][ids] * rng.normal(size=draw_count)
+        log_b = log_b.copy()
+        log_b[:, 0] += v_target
     numeric = jnp.array([d.mode == 'numeric' for d in target.drugs])
     doses = jnp.asarray(r)
     def one(intercepts, slopes, eta):
@@ -309,14 +374,26 @@ def evaluate_power_prior(prepared, arrays, manifest, target, *, draw_count, seed
             return product_logistic_risk(intercepts, slopes, doses, eta)
         q = component_risks(intercepts, slopes, doses, numeric, doses > 0)
         return logistic_risk(q, doses, eta)
-    values = jax.jit(jax.vmap(one))(a, log_b, flat['eta'][ids])
+    if backend == 'single_drug_logistic':
+        from .math import single_drug_logistic_risk
+        values = jax.jit(jax.vmap(single_drug_logistic_risk, in_axes=(0, 0, None, 0, None)))(
+            a, log_b[:, 0], doses[:, 0], flat['delta'][ids], doses[:, 1] > 0)
+    else:
+        values = jax.jit(jax.vmap(one))(a, log_b, flat['eta'][ids])
     matrix = np.asarray(values)
     if not np.isfinite(matrix).all() or np.any((matrix < 0) | (matrix > 1)):
         raise ValueError('Invalid Power prior predictive risks; no fallback used.')
+    provenance = [{'target_fit_id': manifest['target_fit_id'], 'flat_draw': int(index),
+                   'target_random_intercept': float(u)} for index, u in zip(ids, u_target)]
+    if v_target is not None:
+        for item, v in zip(provenance, v_target):
+            item['target_random_log_slope'] = float(v)
     result.update(status='fitted', posterior_draws=matrix.tolist(), summary=_summary(matrix, target),
-                  provenance=[{'target_fit_id': manifest['target_fit_id'], 'flat_draw': int(index),
-                               'target_random_intercept': float(u)} for index, u in zip(ids, u_target)],
-                  aggregation_note='Target prior-predictive curves from discounted historical likelihoods. One new-study intercept per whole curve; source article posteriors are unchanged.')
+                  provenance=provenance,
+                  aggregation_note=('Target prior-predictive curves from discounted historical likelihoods. '
+                      + ('One new-study intercept and positive dose slope per whole curve.' if v_target is not None
+                         else 'One new-study intercept per whole curve.')
+                      + ' Source article posteriors are unchanged.'))
     result['prediction_id'] = fingerprint(result)
     return result
 

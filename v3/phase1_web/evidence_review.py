@@ -56,36 +56,38 @@ def abstract_for(root):
     return result
 
 
-def _percentage(value):
-    return 'Not available' if value is None else f'{value:.0%}'
+def render_article_selection(st, rows, scopes, identity):
+    """Select papers once and carry their matching scopes into every curve method."""
+    docs=list(dict.fromkeys(row['document_id'] for row in rows))
+    st.caption(f"{len(docs)} matching {'article' if len(docs)==1 else 'articles'}")
+    if not docs:
+        return []
+    bydoc={scope.document_id:scope for scope in scopes}
+    labels={}
+    for doc in docs:
+        scope=bydoc.get(doc)
+        title=abstract_for(scope.lineage['root'])['title'] if scope else ''
+        labels[doc]=f'{doc} · {title}' if title else doc
+    key='multidrug_included_articles_'+identity[:12]
+    if key not in st.session_state:
+        previous=st.session_state.get('multidrug_review_state') or {}
+        # Existing scope-level choices become whole-article choices on upgrade.
+        old_ids=(previous.get('included') if previous.get('identity')==identity
+                 else st.session_state.get('multidrug_included_'+identity[:12]))
+        selected_docs=(set(docs) if old_ids is None else
+                       {row['document_id'] for row in rows if row['series_key'] in old_ids})
+        st.session_state[key]=[doc for doc in docs if doc in selected_docs]
+    selected=st.multiselect('Articles to use',docs,format_func=labels.__getitem__,key=key)
+    st.caption('Each article appears once. Its matching study data are linked automatically.')
+    return [row['series_key'] for row in rows if row['document_id'] in selected]
 
 
-def _mapping_rows(row, scope, target_drug_names=None):
-    """Describe existing mappings; never choose a new correspondence in the UI."""
-    target_drug_names=target_drug_names or {}
-    mapping=row.get('mapping') or {}
-    source_names={drug.model_drug_id:drug.name for drug in scope.drugs}
-    details={item['target_id']:item for item in mapping.get('details',[])}
-    result=[]
-    for target_id,source_id in mapping.get('pairs',{}).items():
-        detail=details.get(target_id,{})
-        identity=next((item for item in detail.get('comparison',{}).get('details',[])
-                       if item.get('indicator')=='Identity'),{})
-        result.append({'Your drug':target_drug_names.get(target_id) or identity.get('left') or target_id,
-                       'Article drug':source_names.get(source_id) or identity.get('right') or source_id,
-                       'Match': 'Chosen by you' if detail.get('role_rule')=='manual_override' else 'Automatic'})
-    for target_id in mapping.get('unmatched_target_ids',[]):
-        result.append({'Your drug':target_drug_names.get(target_id,target_id),'Article drug':'No suitable match','Match':'Unmatched'})
-    return result
-
-
-def _render_abstract(st, abstract, doc):
+def _render_abstract(st, abstract, doc, *, article_root=None, library_source='local', workspace=None):
+    from phase1_web.article_source import render_original_article
+    render_original_article(st,doc,article_root,library_source=library_source,workspace=workspace)
     with st.expander('Read the original abstract'):
-        if re.fullmatch(r'PMC\d+', doc):
-            st.markdown(f'[Open full article on PMC](https://pmc.ncbi.nlm.nih.gov/articles/{doc}/)')
-        st.caption(abstract['source'])
         if not abstract['main']:
-            st.info('No abstract is available in the saved source files. Check the original article before deciding.')
+            st.info('An abstract is not available. Open the original article above to review it.')
         for section in abstract['main']:
             if 'heading' in section:
                 st.markdown('**'+section['heading']+'**')
@@ -95,29 +97,6 @@ def _render_abstract(st, abstract, doc):
             st.caption('Additional abstract: '+other['type'])
             for section in other['sections']:
                 st.write(section.get('heading') or section.get('text',''))
-
-
-def _render_comparison(st, rows, scopes, target_drug_names=None):
-    with st.expander('See matching and similarity details'):
-        for row in rows:
-            scope=scopes[row['series_key']]
-            st.markdown('**'+str(row.get('label') or scope.label or 'Study group')+'**')
-            matches=_mapping_rows(row,scope,target_drug_names)
-            if matches:st.dataframe(matches,hide_index=True,use_container_width=True)
-            score=(row.get('mapping') or {}).get('score') or {}
-            groups=score.get('groups') or {}
-            from phase1_prediction.profile_similarity import LABELS
-            table=[{'Comparison':LABELS.get(key,key),'Similarity':_percentage(value.get('score'))}
-                   for key,value in groups.items()]
-            if table:
-                st.dataframe(table,hide_index=True,use_container_width=True)
-                st.caption('Similarity compares the available clinical facts. Missing or unmatched fields are not assigned a similarity score.')
-            if row.get('prior_only'):
-                st.caption('No usable DLT observations in this group; matching alone does not make it usable for borrowing.')
-            elif 'point_count' in row:
-                st.caption(f"{row['point_count']} usable dose–DLT observations in this group.")
-            st.caption('Detailed comparison records')
-            st.json(score,expanded=False)
 
 
 def power_prior_review_preview(rows, scopes, target, settings, decisions=None):
@@ -147,7 +126,8 @@ def power_prior_review_preview(rows, scopes, target, settings, decisions=None):
 
 
 def render_review(st, rows, scopes, state_root, identity, review_mode, *, included_scope_ids=None,
-                  power_prior_target=None, power_prior_settings=None, target_drug_names=None):
+                  power_prior_target=None, power_prior_settings=None, target_drug_names=None,
+                  library_source='local', workspace=None):
     all_docs=list(dict.fromkeys(r['document_id'] for r in rows))
     bydoc={s.document_id:s for s in scopes}
     byscope={s.scope_id:s for s in scopes}
@@ -162,13 +142,14 @@ def render_review(st, rows, scopes, state_root, identity, review_mode, *, includ
         included=set(included_scope_ids)
         rows=[r for r in rows if r['series_key'] in included]
     docs=list(dict.fromkeys(r['document_id'] for r in rows))
+    if not docs:
+        if all_docs:
+            st.info('Select at least one article above to continue.')
+        return {} if review_mode else None,False
     decisions={d:saved.get('decisions',{}).get(d,'Not reviewed') for d in docs}
     decisions={d:value if value in REVIEW_OPTIONS else 'Not reviewed' for d,value in decisions.items()}
     if review_mode:
-        st.caption('Choose which articles to use for your planned study. Include keeps the original contribution; '
-                   'Exclude removes it; Unsure halves its contribution before any method-specific normalization. '
-                   'Not reviewed is a separate pending state.')
-        st.caption('These decisions affect borrowing for this target only. Extraction accuracy assessments never enter prediction. Exclusions do not backfill the candidate pool.')
+        st.caption('Read the original article, then decide whether to include it in your planned study.')
         batch=st.selectbox('Batch review action',['No batch action','Include all pending','Mark all pending uncertain'],
                            format_func=lambda value:'Mark all pending unsure' if value=='Mark all pending uncertain' else value,
                            key='review_batch_'+review_id)
@@ -179,32 +160,31 @@ def render_review(st, rows, scopes, state_root, identity, review_mode, *, includ
                     st.session_state['relevance_'+review_id+d]=decisions[d]
         for number,doc in enumerate(docs,1):
             a=abstracts[doc]
-            article_rows=[row for row in rows if row['document_id']==doc]
-            best=max(article_rows,key=lambda row:row.get('similarity') or 0.)
-            drugs=list(dict.fromkeys(drug.name for row in article_rows for drug in byscope[row['series_key']].drugs))
             with st.container(border=True):
                 st.subheader(f"{number}. {a['title'] or 'Article title unavailable'}")
-                st.caption(f"{doc} · {a.get('year') or 'Year unavailable'} · {len(article_rows)} study group(s)")
-                st.write('**Drugs studied:** '+', '.join(drugs))
-                st.caption(f"Similarity: {_percentage(best.get('similarity'))} "
-                           '(best-ranked study group; these are matching scores, not toxicity probabilities).')
-                matches=_mapping_rows(best,byscope[best['series_key']],target_drug_names)
-                if matches:
-                    st.write('**Drug correspondence:** '+'; '.join(
-                        f"{item['Your drug']} → {item['Article drug']}" for item in matches))
-                if len(article_rows)>1:
-                    st.caption('The summary shows the best-ranked group. Other groups may have different matches; see the details below.')
+                st.caption(f"{doc} · {a.get('year') or 'Year unavailable'}")
+                _render_abstract(st,a,doc,article_root=bydoc[doc].lineage['root'],
+                                 library_source=library_source,workspace=workspace)
                 decisions[doc]=st.radio('Relevance decision',REVIEW_OPTIONS,index=REVIEW_OPTIONS.index(decisions[doc]),
-                                       format_func=REVIEW_LABELS.__getitem__,key='relevance_'+review_id+doc,horizontal=True)
-                _render_abstract(st,a,doc)
-                _render_comparison(st,article_rows,byscope,target_drug_names)
-        # Scope toggles do not discard earlier decisions for deselected articles.
+                                       format_func=REVIEW_LABELS.__getitem__,key='relevance_'+review_id+doc,horizontal=True,
+                                       help='Include keeps the article; Exclude removes it; Unsure applies a 50% review weight before normalization.')
+        # Article selection does not discard earlier decisions for deselected papers.
         stored_decisions={**saved.get('decisions',{}),**decisions}
         write_json(path,{'kind':'target_relevance_only','review_id':review_id,'decisions':stored_decisions,'abstract_versions':{d:a['content_id'] for d,a in abstracts.items()}})
         if any(v=='Not reviewed' for v in decisions.values()):
-            st.info('Review every candidate article or use an explicit batch action before prediction.')
+            st.info('Review every selected article or use an explicit batch action before prediction.')
             return decisions,False
     else:decisions=None
+    if review_mode and power_prior_target is None:
+        budgets=article_budgets(rows,decisions)
+        ready=bool(budgets) and any(item['normalized_weight']>0 for item in budgets)
+        if ready:
+            st.success('Article review saved. Continue to risk curves when you are ready.')
+        elif all(value=='Exclude' for value in decisions.values()):
+            st.info('All selected articles are excluded. Include an article or mark one Unsure to continue.')
+        else:
+            st.info('Your decisions are saved. No selected article has usable matching evidence for this plan.')
+        return decisions,ready
     if power_prior_settings is not None and power_prior_target is None:
         # Article screening needs no dose coordinates. Exact likelihood powers
         # are checked later, once the target has computational dose references.
@@ -217,6 +197,8 @@ def render_review(st, rows, scopes, state_root, identity, review_mode, *, includ
         except ValueError as error:
             st.error(str(error))
             return decisions, False
+        if review_mode:
+            return decisions,result['ready']
         st.dataframe(result['rows'], hide_index=True)
         st.caption('Method 3 uses the absolute likelihood powers shown above, not normalized article weights. '
                    'One best eligible complete scope is selected per article. The patient-budget cap is fixed '

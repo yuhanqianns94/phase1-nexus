@@ -4,6 +4,17 @@ import copy
 from phase1_prediction.multidrug.contracts import TargetDrug, TargetRegimen, RegimenPoint, fingerprint
 
 
+EXAMPLE_DOCUMENT_ID = 'PMC3309850'
+EXAMPLE_SCOPE_ID = 'scope_1b13660ef6e8e0b7db68'
+
+
+def fixed_example_scope(scopes):
+    """Always use the same extracted, non-EIASD terameprocol regimen."""
+    return next((scope for scope in scopes
+                 if scope.document_id == EXAMPLE_DOCUMENT_ID
+                 and scope.scope_id == EXAMPLE_SCOPE_ID), None)
+
+
 def target_from_scope(scope):
     drugs=[TargetDrug(drug_id=d.model_drug_id,name=d.name,research_priority=d.research_priority,
         research_role=d.research_role,mode=d.mode,reference_dose=d.reference_dose,unit=d.unit,

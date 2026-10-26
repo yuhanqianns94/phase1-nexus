@@ -208,22 +208,45 @@ def main(native):
         st.caption('Describe a new Phase I trial. Doses and unknown clinical details can be left blank; historical outcomes are not requested.')
         path = native.STATE_ROOT / 'multidrug_target_draft.json'
         from phase1_web.multidrug_form import render_draft, blank_target
-        with st.popover('Draft tools'):
-            if st.session_state.get('multidrug_previous_target_text') and st.button('Restore previous draft'):
-                st.session_state['multidrug_target_text']=st.session_state.pop('multidrug_previous_target_text')
-                st.session_state['multidrug_reset_editor']=True
-            if st.button('Start a new trial'):
-                st.session_state['multidrug_previous_target_text']=st.session_state['multidrug_target_text']
-                st.session_state['multidrug_target_text']=json.dumps(blank_target())
-                st.session_state['multidrug_reset_editor']=True
-                st.rerun()
-            advanced = st.checkbox('Advanced JSON editor',False)
+        from phase1_web.multidrug_examples import fixed_example_scope, target_from_scope
+        example_scope = fixed_example_scope(scopes)
+        new_trial, load_example = st.columns(2)
+        replacement = None
+        if new_trial.button('Start new trial', width='stretch'):
+            replacement = blank_target()
+        if load_example.button('Load example trial', width='stretch', disabled=example_scope is None,
+                help='Load the extracted terameprocol trial from PMC3309850.' if example_scope else
+                     'The fixed example (PMC3309850) is not available in this library. Use the Shared research library.'):
+            try:
+                replacement = target_from_scope(example_scope).model_dump(mode='json')
+                replacement['name'] = 'Example trial · PMC3309850 · terameprocol'
+            except ValueError as error:
+                st.error(str(error))
+        if replacement is not None:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            previous = st.session_state['multidrug_target_text']
+            st.session_state['multidrug_previous_target_text'] = previous
+            path.with_name('multidrug_target_draft.previous.json').write_text(previous)
+            st.session_state['multidrug_target_text'] = json.dumps(replacement, ensure_ascii=False, indent=2)
+            st.session_state['multidrug_reset_editor'] = True
+            st.session_state['multidrug_advanced_editor'] = False
+            st.rerun()
+        if st.session_state.get('multidrug_previous_target_text') and st.button('Restore previous draft', type='tertiary'):
+            st.session_state['multidrug_target_text'] = st.session_state.pop('multidrug_previous_target_text')
+            path.with_name('multidrug_target_draft.previous.json').unlink(missing_ok=True)
+            st.session_state['multidrug_reset_editor'] = True
+            st.rerun()
+        advanced = st.checkbox('Advanced JSON editor', False, key='multidrug_advanced_editor')
         mode_changed=advanced!=st.session_state.get('multidrug_advanced_previous',False)
         requested_reset=st.session_state.pop('multidrug_reset_editor',False)
         requested_rebase=st.session_state.pop('multidrug_rebase_editor',False)
         rebase=mode_changed or previous_page!='Target Trial' or requested_reset or requested_rebase
         if requested_reset:
+            invalidate_prediction(st.session_state)
+            st.session_state.pop('multidrug_review_state', None)
             st.session_state.pop('trial_plan_step',None)
+            st.session_state.pop(REVIEW_REQUEST_KEY, None)
+            review_requested = False
             for key in list(st.session_state):
                 if key.startswith('trial_plan_rule_'):st.session_state.pop(key,None)
             for key in ('workflow_target_dlt','workflow_min_drug_similarity','workflow_min_clinical_coverage'):
@@ -267,6 +290,9 @@ def main(native):
             for issue in issues:st.info(issue)
             invalidate_prediction(st.session_state)
             return
+        source = draft.get('profile', {}).get('example_source', {})
+        if source.get('document_id'):
+            st.caption('Example source: ' + source['document_id'] + ' · Extracted clinical information and doses; editable as a new trial plan.')
         if review_requested:
             go_to(st,'Review evidence')
         if advanced or st.session_state.get(STEP_KEY) != STEPS[-1]:

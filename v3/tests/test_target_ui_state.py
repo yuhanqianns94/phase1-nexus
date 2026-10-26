@@ -56,7 +56,7 @@ def test_rule_rebase_preserves_explorer_but_new_trial_resets_it(tmp_path, monkey
     assert app.radio(key='explore_mode').value == 'Relative-dose exploration'
     assert app.number_input(key='explore_D_lo').value == .7
     app.sidebar.radio[0].set_value('Target Trial').run()
-    next(b for b in app.button if b.label == 'Start a new trial').click().run()
+    next(b for b in app.button if b.label == 'Start new trial').click().run()
     assert 'explore_D_lo' not in app.session_state
     assert json.loads(app.session_state['multidrug_target_text'])['drugs'] == []
     assert not app.exception and not app.error

@@ -273,7 +273,7 @@ def test_changed_plan_units_and_reference_rebase_without_losing_explored_doses(t
 def test_previous_draft_can_be_restored_without_any_library_examples(tmp_path,monkeypatch):
     app=_workflow_app(tmp_path,monkeypatch,with_article=False)
     before=json.loads(app.session_state['multidrug_target_text'])
-    next(button for button in app.button if button.label=='Start a new trial').click().run()
+    next(button for button in app.button if button.label=='Start new trial').click().run()
     assert not json.loads(app.session_state['multidrug_target_text'])['drugs']
     next(button for button in app.button if button.label=='Restore previous draft').click().run()
     restored=json.loads(app.session_state['multidrug_target_text'])

@@ -4,6 +4,7 @@ import json
 
 import numpy as np
 import pandas as pd
+import pytest
 import streamlit as st
 
 from phase1_prediction.multidrug import service
@@ -70,8 +71,9 @@ def test_inherited_scale_is_unchanged_until_explicit_edit_and_evaluation(tmp_pat
     assert not any(b.label=='Evaluate BOIN candidate regimens' for b in app.button)
     app.checkbox(key=prefix+'_edit_units').check().run()
     assert app.text_input(key=prefix+'A_unit').value=='mg'
-    assert app.number_input(key=prefix+'A_ref').value==50.
+    assert not any(w.key == prefix+'A_ref' for w in app.number_input)
     assert not any(b.label=='Evaluate BOIN candidate regimens' for b in app.button)
+    app.checkbox(key=prefix+'A_custom_ref').check().run()
     app.number_input(key=prefix+'A_ref').set_value(25.).run()
     assert app.session_state['multidrug_prediction']==prediction
     assert not any(s.label=='BOIN path: select regimens in exploration order' for s in app.multiselect)
@@ -87,16 +89,15 @@ def test_inherited_scale_is_unchanged_until_explicit_edit_and_evaluation(tmp_pat
     assert not app.error and not app.exception
 
 
-def test_relative_coordinates_require_explicit_actual_doses_and_reference(tmp_path,monkeypatch):
+def test_relative_coordinates_require_actual_doses_and_derive_reference(tmp_path,monkeypatch):
     prediction=prediction_from_cached_fixture(tmp_path,monkeypatch,exploration=True)
     app=boin_app(tmp_path,monkeypatch,prediction)
     prefix='boin_candidates_'+prediction['run_id']
     assert not any(r.label=='Candidate regimen source' for r in app.radio)
     assert app.text_input(key=prefix+'A_unit').value==''
-    assert app.number_input(key=prefix+'A_ref').value is None
+    assert not any(w.key == prefix+'A_ref' for w in app.number_input)
     assert not any(b.label=='Run BOIN' for b in app.button)
     app.text_input(key=prefix+'A_unit').set_value('mg').run()
-    app.number_input(key=prefix+'A_ref').set_value(50.).run()
     # AppTest cannot edit data_editor cells; supply its edited table output.
     original_editor=st.data_editor
     def entered_candidates(*args,**kwargs):
@@ -112,7 +113,7 @@ def test_relative_coordinates_require_explicit_actual_doses_and_reference(tmp_pa
     assert updated['run_id']!=prediction['run_id']
     assert [p['level_id'] for p in updated['target']['points']]==['L1','L2','L3']
     assert updated['target']['drugs'][0]['unit']=='mg'
-    assert updated['target']['drugs'][0]['reference_dose']==50.
+    assert updated['target']['drugs'][0]['reference_dose']==pytest.approx(50.)
     assert not updated['target']['profile']['planning'].get('exploration')
     np.testing.assert_allclose(next(iter(updated['methods'].values()))['posterior_draws'],next(iter(prediction['methods'].values()))['posterior_draws'])
     assert not app.error and not app.exception

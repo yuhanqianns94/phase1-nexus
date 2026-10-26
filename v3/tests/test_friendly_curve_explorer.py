@@ -106,22 +106,21 @@ def test_undecided_companion_is_neither_absent_nor_used_unknown():
     assert not app.exception
 
 
-def test_unknown_actual_doses_and_reference_stay_blank_until_entered():
+def test_unknown_actual_doses_stay_blank_and_reference_is_automatic():
     draft = draft_for(1)
     draft['points'] = []
     draft['path_level_ids'] = []
     draft['drugs'][0].update(mode='background', unit=None, reference_dose=None)
     app = app_for(draft)
     app.radio(key='explore_mode').set_value('Actual-dose exploration').run()
-    assert app.number_input(key='explore_A_ref').value is None
+    assert not any(w.key == 'explore_A_ref' for w in app.number_input)
     assert app.number_input(key='explore_A_actual_lo').value is None
     assert app.number_input(key='explore_A_actual_hi').value is None
     assert app.session_state['result'] is None
     app.text_input(key='explore_A_unit').set_value('mg').run()
-    app.number_input(key='explore_A_ref').set_value(20.).run()
     app.number_input(key='explore_A_actual_lo').set_value(10.).run()
     app.number_input(key='explore_A_actual_hi').set_value(40.).run()
-    assert app.session_state['result']['drugs'][0]['reference_dose'] == 20.
+    assert abs(app.session_state['result']['drugs'][0]['reference_dose'] - 20.) < 1e-10
     assert app.session_state['draft'] == draft
     assert not app.exception
 

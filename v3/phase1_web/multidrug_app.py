@@ -153,7 +153,7 @@ def main(native):
     public = is_public()
     # Keep BOIN inputs when its widgets are absent on another workflow page.
     for key in list(st.session_state):
-        keep_candidate_input=key.startswith('boin_candidates_') and key.endswith(('_source','_edit_units','_unit','_ref'))
+        keep_candidate_input=key.startswith('boin_candidates_') and key.endswith(('_source','_edit_units','_unit','_ref','_custom_ref'))
         if key.startswith(('boin_design_','simulation_path_', 'power_prior_', 'prior_settings_', 'explore_', 'workflow_', 'multidrug_weight_', 'threshold_', 'relevance_', 'multidrug_included_'  )) or keep_candidate_input:
             st.session_state[key]=st.session_state[key]
     settings = st.session_state.setdefault('v3_settings', native._initial_settings())

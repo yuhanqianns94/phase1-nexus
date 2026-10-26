@@ -260,6 +260,7 @@ def test_changed_plan_units_and_reference_rebase_without_losing_explored_doses(t
     app.selectbox(key='plan_D_unit').set_value('mg/kg').run()
     app.sidebar.radio[0].set_value('Prediction Results').run()
     assert app.text_input(key='explore_D_unit').value=='mg/kg'
+    app.checkbox(key='explore_D_custom_ref').check().run()
     app.number_input(key='explore_D_ref').set_value(200.).run()
     app.sidebar.radio[0].set_value('Target Trial').run()
     assert 'plan_D_ref' not in [item.key for item in app.number_input]

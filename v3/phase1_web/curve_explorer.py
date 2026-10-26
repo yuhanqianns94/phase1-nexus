@@ -5,6 +5,7 @@ import pandas as pd
 import altair as alt
 from phase1_prediction.multidrug.workflow import exploration_target
 from phase1_prediction.multidrug.contracts import TargetRegimen, fingerprint
+from phase1_web.dose_reference import reference_control
 
 
 def _companion_state(drug, draft):
@@ -71,9 +72,7 @@ def dose_mapping_controls(st, data, *, key, relative=False, references=False):
                 index=options.index(drug.get('transport_mode','relative_dose_analogy')),
                 format_func=modes.get,key=sub+'_transport')
             if references and drug.get('mode')=='numeric':
-                drug['reference_dose']=st.number_input('Model reference dose',
-                    min_value=.00000001,value=float(drug['reference_dose']) if drug.get('reference_dose') is not None else None,key=sub+'_ref')
-                st.caption('Dose scale only; this is not an equivalent or recommended dose.')
+                reference_control(st, drug, _actual_values(drug, data), key=sub)
 
 
 def _focal_target(data, focal_id):
@@ -109,7 +108,7 @@ def coordinate_editor(st, draft, *, key='explore'):
     saved_keys = [key + suffix for suffix in ('_goal', '_mode', '_axes')]
     saved_keys += [key + '_' + d['drug_id'] + '_' + suffix for d in drugs
                   for suffix in ('lo', 'hi', 'n', 'fixed', 'actual_lo', 'actual_hi', 'actual_n',
-                                 'actual_fixed', 'unit', 'ref', 'state', 'transport', 'anchor')]
+                                 'actual_fixed', 'unit', 'ref', 'custom_ref', 'state', 'transport', 'anchor')]
     for saved_key in saved_keys:
         if saved_key in st.session_state:
             st.session_state[saved_key] = st.session_state[saved_key]
@@ -168,7 +167,7 @@ def coordinate_editor(st, draft, *, key='explore'):
 
     modes = ['Relative-dose exploration', 'Actual-dose exploration']
     if st.session_state.get(key + '_mode') not in modes:
-        actual_ready = all(d.get('unit') not in (None, '', 'relative dose') and d.get('reference_dose')
+        actual_ready = all(d.get('unit') not in (None, '', 'relative dose')
                            for d in drugs if d['drug_id'] in axis_ids)
         st.session_state[key + '_mode'] = modes[1] if draft.get('points') and actual_ready else modes[0]
     mode = st.radio('Have you chosen actual doses?', modes,
@@ -216,18 +215,10 @@ def coordinate_editor(st, draft, *, key='explore'):
             if relative:
                 st.caption('Relative dose: 0.5 means half the reference; 2 means twice the reference.')
             else:
+                saved_drug = copy.deepcopy(d)
                 saved_unit = d.get('unit') if d.get('unit') != 'relative dose' else None
-                saved_ref = d.get('reference_dose') if saved_unit else None
-                st.caption('Dose unit and reference from the plan: ' +
-                           (f"{saved_unit}; reference {saved_ref:g} {saved_unit}." if saved_unit and saved_ref
-                            else 'not specified. Enter them below; no actual dose is assumed.'))
-                with st.container():
-                    st.markdown('**Dose units and model reference**')
-                    d['unit'] = st.text_input('Dose unit', saved_unit or '', key=sub + '_unit').strip()
-                    d['reference_dose'] = st.number_input('Model reference dose', min_value=.00000001,
-                                                          value=float(saved_ref) if saved_ref else None, key=sub + '_ref')
-                    st.caption('The reference only sets the model dose scale. Changing it changes the mapping to historical doses; it does not rescale actual doses already entered below.')
-                if not d['unit'] or not d['reference_dose']:
+                d['unit'] = st.text_input('Dose unit', saved_unit or '', key=sub + '_unit').strip()
+                if not d['unit']:
                     complete = False
             units = 'relative dose' if relative else d.get('unit') or 'unit not specified'
             values = _actual_values(d, draft)
@@ -254,6 +245,13 @@ def coordinate_editor(st, draft, *, key='explore'):
                     complete = False
                 else:
                     coordinates[did] = [fixed]
+            if not relative:
+                # Use only the endpoints, never the density of the plotting grid.
+                range_values = ([lo, hi] if lo is not None and hi is not None and 0 < lo < hi else []) if did in axes else ([fixed] if fixed else [])
+                reference_control(st, d, values or range_values, key=sub, saved_drug=saved_drug,
+                                  basis='geometric mean of candidate doses' if values else 'geometric mean of the initial dose range' if did in axes else 'fixed dose')
+                if not d.get('reference_dose'):
+                    complete = False
     dose_mapping_controls(st,data,key=key,relative=relative)
     if not complete:
         return None
@@ -329,13 +327,12 @@ def boin_candidate_editor(st,result,*,rebase=False):
     st.caption('Enter one candidate dose per row. Dose-level IDs are generated automatically; BOIN follows increasing target-drug doses.')
     rows=[dict(p['doses'],Regimen=p['level_id']) for p in data['points']] if reuse else []
     numeric=[d for d in data['drugs'] if d['mode']=='numeric']
+    saved_drugs={d['drug_id']:copy.deepcopy(d) for d in data['drugs']}
     edit_units=relative
     if numeric and not relative:
-        edit_units=st.checkbox('Edit dose units and reference doses',key=prefix+'_edit_units')
-        if edit_units:
-            st.caption('Changing the inherited reference dose changes dose mapping and requires evaluation.')
+        edit_units=st.checkbox('Edit dose units',key=prefix+'_edit_units')
     elif numeric:
-        st.caption('Required: enter each actual dose unit and the actual reference dose corresponding to relative coordinate 1.')
+        st.caption('Enter the actual dose unit and candidate doses. The reference dose is calculated automatically.')
     # Preserve existing IDs internally so an unchanged prediction can be reused.
     # New rows receive IDs below; users only edit doses and companion use states.
     columns={'Regimen':None}
@@ -344,8 +341,6 @@ def boin_candidate_editor(st,result,*,rebase=False):
         if d['mode']=='numeric':
             if edit_units:
                 d['unit']=st.text_input(d['name']+' actual dose unit',value='' if relative else d['unit'],key=prefix+did+'_unit')
-                d['reference_dose']=st.number_input(d['name']+' computational reference dose',min_value=.00000001,
-                    value=None if relative else float(d['reference_dose']),key=prefix+did+'_ref')
             columns[did]=st.column_config.NumberColumn(d['name']+' ('+d['unit']+')',min_value=0.,required=True)
         else:
             columns[did]=st.column_config.SelectboxColumn(d['name'],options=['Used, dose unknown','Not used'],required=True)
@@ -381,6 +376,14 @@ def boin_candidate_editor(st,result,*,rebase=False):
             if pd.isna(v):raise ValueError('Complete every candidate dose or use state.')
             values[d['drug_id']]=(0. if v=='Not used' else None) if d['mode']=='background' else float(v)
         data['points'].append({'level_id':str(row['Regimen']),'doses':values})
+    for d in numeric:
+        if not d.get('unit') or d['unit'] == 'relative dose':
+            st.info('Enter an actual dose unit for ' + d['name'] + '.');return None
+        reference_control(st, d, [p['doses'][d['drug_id']] for p in data['points']],
+                          key=prefix+d['drug_id'], saved_drug=saved_drugs[d['drug_id']],
+                          basis='geometric mean of candidate doses')
+        if not d.get('reference_dose'):
+            return None
     planning=data.setdefault('profile',{}).setdefault('planning',{})
     planning.pop('exploration',None);planning['exposure_states']={}
     focal = data.get('profile', {}).get('single_drug_analysis', {}).get('focal_drug_id')

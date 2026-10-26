@@ -56,6 +56,8 @@ def test_actual_reference_edits_do_not_rescale_entered_actual_doses():
     app.number_input(key='explore_A_actual_lo').set_value(30.).run()
     app.number_input(key='explore_A_actual_hi').set_value(150.).run()
     app.number_input(key='explore_B_actual_fixed').set_value(90.).run()
+    app.checkbox(key='explore_A_custom_ref').check().run()
+    app.checkbox(key='explore_B_custom_ref').check().run()
     app.number_input(key='explore_A_ref').set_value(200.).run()
     app.number_input(key='explore_B_ref').set_value(100.).run()
     assert app.number_input(key='explore_A_actual_lo').value==30.

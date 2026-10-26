@@ -162,6 +162,6 @@ def sync_exploration_units(st, draft, *, key='explore'):
     previous = st.session_state.get(saved_key, {})
     for drug_id, values in current.items():
         if drug_id in previous and previous[drug_id] != values:
-            for suffix in ('_unit', '_ref'):
+            for suffix in ('_unit', '_ref', '_custom_ref', '_reference_state'):
                 st.session_state.pop(key + '_' + drug_id + suffix, None)
     st.session_state[saved_key] = current
